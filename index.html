@@ -209,6 +209,7 @@
           <option value="admin">管理员</option>
         </select>
       </label>
+      <button id="resetDemoBtn" class="warning">重置演示数据</button>
       <button id="logoutBtn" class="secondary hidden">退出登录</button>
     </div>
   </header>
@@ -416,8 +417,10 @@
     };
     const VIEW_NAMES = Object.keys(VIEW_TO_ELEMENT_ID);
 
+    const STORAGE_KEY = 'usp-demo-state-v2';
+
     // 统一会话状态 + mock 用户表
-    const authState = {
+    const DEFAULT_AUTH_STATE = {
       isLoggedIn: false,
       currentUser: null,
       role: null,
@@ -430,7 +433,7 @@
       }
     };
 
-    const uiState = {
+    const DEFAULT_UI_STATE = {
       currentView: "manage"
     };
 
@@ -442,7 +445,7 @@
       guest: { label: '游客' }
     };
 
-    const helpState = {
+    const DEFAULT_HELP_STATE = {
       faqKeyword: '',
       expandedFaqId: null,
       submitMessage: '',
@@ -456,7 +459,7 @@
       ]
     };
 
-    const projectState = {
+    const DEFAULT_PROJECT_STATE = {
       projectStore: [
         {
           id: 1,
@@ -497,7 +500,7 @@
 
 
 
-    const adminState = {
+    const DEFAULT_ADMIN_STATE = {
       userStore: [
         { id: 1, account: 'admin@example.com', name: '管理员', role: 'admin', enabled: true },
         { id: 2, account: '13800000000', name: '测试同学', role: 'student', enabled: true },
@@ -522,7 +525,36 @@
       admin: [{ type: 'contract', title: '合同待处理', time: '2026-03-04 12:30', content: '有申请已进入签约阶段，请关注。', read: false }],
       guest: [{ type: 'system', title: '访客提示', time: '2026-03-04 08:00', content: '请先登录后使用完整功能。', read: true }]
     };
-    const messageState = { messageStore: [], selectedType: 'system', selectedMessageId: null, loadedRole: null };
+    const DEFAULT_MESSAGE_STATE = { messageStore: [], selectedType: 'system', selectedMessageId: null, loadedRole: null };
+
+    const clone = (value) => JSON.parse(JSON.stringify(value));
+
+    const appState = {
+      auth: clone(DEFAULT_AUTH_STATE),
+      role: null,
+      projects: clone(DEFAULT_PROJECT_STATE.projectStore),
+      applications: clone(DEFAULT_PROJECT_STATE.applicationStore),
+      messages: clone(DEFAULT_MESSAGE_STATE),
+      feedbacks: clone(DEFAULT_HELP_STATE.feedbackStore),
+      users: clone(DEFAULT_ADMIN_STATE.userStore),
+      notices: clone(DEFAULT_ADMIN_STATE.noticeStore),
+      logs: clone(DEFAULT_ADMIN_STATE.logStore),
+      ui: clone(DEFAULT_UI_STATE)
+    };
+
+    const authState = appState.auth;
+    const uiState = appState.ui;
+    const helpState = clone(DEFAULT_HELP_STATE);
+    const projectState = clone(DEFAULT_PROJECT_STATE);
+    const adminState = clone(DEFAULT_ADMIN_STATE);
+    const messageState = appState.messages;
+
+    projectState.projectStore = appState.projects;
+    projectState.applicationStore = appState.applications;
+    helpState.feedbackStore = appState.feedbacks;
+    adminState.userStore = appState.users;
+    adminState.noticeStore = appState.notices;
+    adminState.logStore = appState.logs;
 
     const el = {
       authView: document.getElementById('authView'),
@@ -530,6 +562,7 @@
       userSummary: document.getElementById('userSummary'),
       currentRole: document.getElementById('currentRole'),
       roleSelect: document.getElementById('roleSelect'),
+      resetDemoBtn: document.getElementById('resetDemoBtn'),
       logoutBtn: document.getElementById('logoutBtn'),
       loginAccount: document.getElementById('loginAccount'),
       loginPassword: document.getElementById('loginPassword'),
@@ -587,6 +620,151 @@
       messageDetail: document.getElementById('messageDetail'),
       toastWrap: document.getElementById('toastWrap')
     };
+
+
+    const STORAGE_FIELDS = ['auth', 'role', 'projects', 'applications', 'messages', 'feedbacks', 'users', 'notices', 'logs', 'ui'];
+    let renderScheduled = false;
+
+    function persistState() {
+      const payload = STORAGE_FIELDS.reduce((acc, key) => {
+        acc[key] = appState[key];
+        return acc;
+      }, {});
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    }
+
+    function syncStoresFromAppState() {
+      appState.projects = projectState.projectStore;
+      appState.applications = projectState.applicationStore;
+      appState.feedbacks = helpState.feedbackStore;
+      appState.users = adminState.userStore;
+      appState.notices = adminState.noticeStore;
+      appState.logs = adminState.logStore;
+      appState.messages = messageState;
+      appState.auth = authState;
+      appState.role = authState.role;
+      appState.ui = {
+        ...uiState,
+        browseFilters: projectState.browseFilters,
+        selectedProjectId: projectState.selectedProjectId,
+        browseSelectedProjectId: projectState.browseSelectedProjectId,
+        selectedApplicationId: projectState.selectedApplicationId
+      };
+    }
+
+    function setState(partial = {}) {
+      Object.assign(appState, partial);
+      if (partial.auth) Object.assign(authState, partial.auth);
+      if (Object.prototype.hasOwnProperty.call(partial, 'role')) authState.role = partial.role;
+      if (partial.projects) projectState.projectStore = partial.projects;
+      if (partial.applications) projectState.applicationStore = partial.applications;
+      if (partial.messages) Object.assign(messageState, partial.messages);
+      if (partial.feedbacks) helpState.feedbackStore = partial.feedbacks;
+      if (partial.users) adminState.userStore = partial.users;
+      if (partial.notices) adminState.noticeStore = partial.notices;
+      if (partial.logs) adminState.logStore = partial.logs;
+      if (partial.ui) Object.assign(uiState, partial.ui);
+      syncStoresFromAppState();
+      persistState();
+      requestRender();
+    }
+
+    function requestRender() {
+      if (renderScheduled) return;
+      renderScheduled = true;
+      requestAnimationFrame(() => {
+        renderScheduled = false;
+        render();
+      });
+    }
+
+    function render() {
+      const loggedIn = !!authState.isLoggedIn;
+      el.authView.classList.toggle('hidden', loggedIn);
+      el.appView.classList.toggle('hidden', !loggedIn);
+      el.logoutBtn.classList.toggle('hidden', !loggedIn);
+      el.userSummary.textContent = getUserSummaryText(authState.currentUser, authState.role);
+      syncRoleTexts(authState.role || 'student');
+      if (authState.role && messageState.loadedRole !== authState.role && !messageState.messageStore.length) {
+        loadMessagesForRole(authState.role);
+      }
+      switchView(uiState.currentView, false);
+
+      el.browseSearch.value = projectState.browseFilters.keyword;
+      el.browseCategory.value = projectState.browseFilters.category;
+      el.browseBudget.value = projectState.browseFilters.budget;
+
+      renderDashboardStats();
+      renderMessageCenter();
+      renderProjectManage();
+      renderProjectBrowse();
+      renderApplicationManage();
+      renderAdminPanel();
+      if (uiState.currentView === 'browse' && projectState.browseSelectedProjectId) {
+        renderProjectBrowseDetail(projectState.browseSelectedProjectId);
+      }
+      if (uiState.currentView === 'help') {
+        renderHelpCenter();
+      }
+      renderContractPreview();
+      persistState();
+    }
+
+    function hydrateState() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      try {
+        const data = JSON.parse(raw);
+        setState({
+          auth: data.auth || clone(DEFAULT_AUTH_STATE),
+          role: data.role || null,
+          projects: Array.isArray(data.projects) ? data.projects : clone(DEFAULT_PROJECT_STATE.projectStore),
+          applications: Array.isArray(data.applications) ? data.applications : clone(DEFAULT_PROJECT_STATE.applicationStore),
+          messages: data.messages || clone(DEFAULT_MESSAGE_STATE),
+          feedbacks: Array.isArray(data.feedbacks) ? data.feedbacks : [],
+          users: Array.isArray(data.users) ? data.users : clone(DEFAULT_ADMIN_STATE.userStore),
+          notices: Array.isArray(data.notices) ? data.notices : clone(DEFAULT_ADMIN_STATE.noticeStore),
+          logs: Array.isArray(data.logs) ? data.logs : clone(DEFAULT_ADMIN_STATE.logStore),
+          ui: data.ui || clone(DEFAULT_UI_STATE)
+        });
+        if (data.ui?.browseFilters) {
+          projectState.browseFilters = { ...projectState.browseFilters, ...data.ui.browseFilters };
+        }
+        if (data.ui?.selectedProjectId) {
+          projectState.selectedProjectId = data.ui.selectedProjectId;
+        }
+        projectState.browseSelectedProjectId = data.ui?.browseSelectedProjectId || null;
+        projectState.selectedApplicationId = data.ui?.selectedApplicationId || null;
+      } catch (error) {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    }
+
+    function resetDemoData() {
+      localStorage.removeItem(STORAGE_KEY);
+      setState({
+        auth: clone(DEFAULT_AUTH_STATE),
+        role: null,
+        projects: clone(DEFAULT_PROJECT_STATE.projectStore),
+        applications: clone(DEFAULT_PROJECT_STATE.applicationStore),
+        messages: clone(DEFAULT_MESSAGE_STATE),
+        feedbacks: clone(DEFAULT_HELP_STATE.feedbackStore),
+        users: clone(DEFAULT_ADMIN_STATE.userStore),
+        notices: clone(DEFAULT_ADMIN_STATE.noticeStore),
+        logs: clone(DEFAULT_ADMIN_STATE.logStore),
+        ui: clone(DEFAULT_UI_STATE)
+      });
+      projectState.selectedProjectId = DEFAULT_PROJECT_STATE.selectedProjectId;
+      projectState.editingProjectId = null;
+      projectState.browseFilters = clone(DEFAULT_PROJECT_STATE.browseFilters);
+      projectState.browseSelectedProjectId = null;
+      projectState.selectedApplicationId = null;
+      helpState.faqKeyword = '';
+      helpState.expandedFaqId = null;
+      helpState.submitMessage = '';
+      adminState.editingNoticeId = null;
+      showToast('演示数据已重置');
+    }
 
     const accountRegex = /^(1\d{10}|[^\s@]+@[^\s@]+\.[^\s@]+)$/;
 
@@ -651,7 +829,7 @@
       return elementId ? document.getElementById(elementId) : null;
     }
 
-    function switchView(viewName) {
+    function switchView(viewName, scheduleRender = true) {
       const safeView = VIEW_NAMES.includes(viewName) ? viewName : 'manage';
       uiState.currentView = safeView;
       VIEW_NAMES.forEach((name) => {
@@ -663,9 +841,14 @@
       el.navItems.forEach((item) => {
         item.classList.toggle('active', item.dataset.view === safeView);
       });
-      if (safeView === 'help') {
-        renderHelpCenter();
+      if (scheduleRender) {
+        setState({ ui: { currentView: safeView } });
       }
+    }
+
+
+    function renderPage(viewName) {
+      switchView(viewName);
     }
 
     function getFeedbackStatusLabel(status) {
@@ -886,20 +1069,10 @@
 
     function setRole(role) {
       const normalized = roleConfig[role] ? role : 'student';
-      authState.role = normalized;
-      syncRoleTexts(normalized);
-      if (authState.currentUser) {
-        el.userSummary.textContent = getUserSummaryText(authState.currentUser, normalized);
-      }
       if (messageState.loadedRole !== normalized) {
         loadMessagesForRole(normalized);
       }
-      renderDashboardStats();
-      renderMessageCenter();
-      renderProjectManage();
-      renderProjectBrowse();
-      renderApplicationManage();
-      renderAdminPanel();
+      setState({ role: normalized, messages: messageState });
     }
 
     function getMockIp() {
@@ -913,8 +1086,7 @@
       const username = authState.currentUser?.username || authState.currentUser?.account || '管理员';
       const nextId = adminState.logStore.length ? Math.max(...adminState.logStore.map((item) => item.id)) + 1 : 1;
       adminState.logStore.unshift({ id: nextId, user: username, action, time: getCurrentTimeText(), ip: getMockIp() });
-      renderDashboardStats();
-      renderAdminPanel();
+      requestRender();
     }
 
     function getDashboardMetrics() {
@@ -1355,9 +1527,7 @@
       }
 
       closeProjectPanel();
-      renderProjectManage();
-      renderProjectBrowse();
-      renderDashboardStats();
+      setState({ projects: projectState.projectStore });
     }
 
     function handleProjectListClick(event) {
@@ -1375,17 +1545,13 @@
         if (button.dataset.action === 'offline') {
           project.status = 'offline';
           projectState.selectedProjectId = id;
-          renderProjectManage();
-          renderProjectBrowse();
-          renderDashboardStats();
+          setState({ projects: projectState.projectStore });
           pushAdminLog(`下架项目：${project.name}`);
           return showToast('项目已下架');
         }
         if (button.dataset.action === 'delete') {
           projectState.projectStore = projectState.projectStore.filter((p) => p.id !== id);
-          renderProjectManage();
-          renderProjectBrowse();
-          renderDashboardStats();
+          setState({ projects: projectState.projectStore });
           pushAdminLog(`删除项目：${project.name}`);
           return showToast('项目删除成功');
         }
@@ -1396,7 +1562,7 @@
         return;
       }
       projectState.selectedProjectId = Number(card.dataset.id);
-      renderProjectManage();
+      requestRender();
     }
 
     function handleBrowseAndApplicationClick(event) {
@@ -1407,6 +1573,7 @@
       const id = Number(button.dataset.id);
       if (button.dataset.action === 'view-detail') {
         projectState.browseSelectedProjectId = id;
+        requestRender();
         return renderProjectBrowseDetail(id);
       }
       if (button.dataset.action === 'submit-application') {
@@ -1431,8 +1598,7 @@
           remark: remarkInput?.value.trim() || ''
         });
         projectState.selectedApplicationId = nextId;
-        renderApplicationManage();
-        renderAdminPanel();
+        setState({ applications: projectState.applicationStore });
         pushAdminLog(`提交申请：${project.name}`);
         showToast('申请提交成功');
         return;
@@ -1445,7 +1611,8 @@
 
       if (button.dataset.action === 'select-application') {
         projectState.selectedApplicationId = id;
-        return renderApplicationManage();
+        setState({ ui: uiState });
+        return;
       }
       if (button.dataset.action === 'edit-application') {
         const nextAmount = Number(prompt('请输入新的赞助金额', String(app.amount)));
@@ -1456,15 +1623,13 @@
         app.amount = nextAmount;
         app.remark = nextRemark.trim();
         app.time = getCurrentTimeText();
-        renderApplicationManage();
-        renderAdminPanel();
+        setState({ applications: projectState.applicationStore });
         pushAdminLog(`修改申请：${app.projectName}`);
         return showToast('申请已更新');
       }
       if (button.dataset.action === 'withdraw-application') {
         app.status = app.status === 'withdrawn' ? 'applying' : 'withdrawn';
-        renderApplicationManage();
-        renderAdminPanel();
+        setState({ applications: projectState.applicationStore });
         pushAdminLog(`${app.status === 'withdrawn' ? '撤回' : '恢复'}申请：${app.projectName}`);
         return showToast(app.status === 'withdrawn' ? '申请已撤回' : '申请已恢复');
       }
@@ -1472,8 +1637,7 @@
         const nextStatusFlow = { applying: 'signed', signed: 'executing', executing: 'completed' };
         if (nextStatusFlow[app.status]) {
           app.status = nextStatusFlow[app.status];
-          renderApplicationManage();
-          renderAdminPanel();
+          setState({ applications: projectState.applicationStore });
           pushAdminLog(`流转申请状态：${app.projectName} -> ${PROJECT_STATUS[app.status].label}`);
           showToast(`状态已流转为${PROJECT_STATUS[app.status].label}`);
         }
@@ -1495,7 +1659,7 @@
         if (!user) return;
         user.enabled = !user.enabled;
         pushAdminLog(`${user.enabled ? '启用' : '禁用'}用户：${user.name}`);
-        renderAdminPanel();
+        setState({ users: adminState.userStore, logs: adminState.logStore });
         showToast(`用户已${user.enabled ? '启用' : '禁用'}`);
         return;
       }
@@ -1504,17 +1668,17 @@
         adminState.noticeStore.unshift({ id: nextId, title: '新公告标题', content: '请编辑公告内容', updatedAt: getCurrentTimeText() });
         adminState.editingNoticeId = nextId;
         pushAdminLog(`发布公告：ID ${nextId}`);
-        renderAdminPanel();
+        setState({ notices: adminState.noticeStore, logs: adminState.logStore });
         return;
       }
       if (button.dataset.action === 'edit-notice') {
         adminState.editingNoticeId = id;
-        renderAdminPanel();
+        requestRender();
         return;
       }
       if (button.dataset.action === 'cancel-notice') {
         adminState.editingNoticeId = null;
-        renderAdminPanel();
+        requestRender();
         return;
       }
       if (button.dataset.action === 'save-notice') {
@@ -1533,7 +1697,7 @@
         notice.updatedAt = getCurrentTimeText();
         adminState.editingNoticeId = null;
         pushAdminLog(`编辑公告：${title}`);
-        renderAdminPanel();
+        setState({ notices: adminState.noticeStore, logs: adminState.logStore });
         showToast('公告已更新');
         return;
       }
@@ -1542,7 +1706,7 @@
         adminState.noticeStore = adminState.noticeStore.filter((item) => item.id !== id);
         adminState.editingNoticeId = null;
         pushAdminLog(`删除公告：${notice?.title || id}`);
-        renderAdminPanel();
+        setState({ notices: adminState.noticeStore, logs: adminState.logStore });
         showToast('公告已删除');
       }
     }
@@ -1569,26 +1733,16 @@
       authState.isLoggedIn = true;
       authState.currentUser = { account: userKey, ...userData };
       authState.role = roleConfig[userData.role] ? userData.role : 'student';
-
-      el.userSummary.textContent = getUserSummaryText(authState.currentUser, authState.role);
-      el.authView.classList.add('hidden');
-      el.appView.classList.remove('hidden');
-      el.logoutBtn.classList.remove('hidden');
-      showMessage('登录成功');
       setRole(authState.role);
-      switchView(uiState.currentView);
+      setState({ auth: authState, role: authState.role });
+      showMessage('登录成功');
     }
 
     function clearSession() {
       authState.isLoggedIn = false;
       authState.currentUser = null;
       authState.role = null;
-
-      el.userSummary.textContent = '未登录';
-      el.currentRole.textContent = '-';
-      el.authView.classList.remove('hidden');
-      el.appView.classList.add('hidden');
-      el.logoutBtn.classList.add('hidden');
+      setState({ auth: authState, role: null });
       showMessage('已退出登录');
     }
 
@@ -1675,6 +1829,7 @@
         role: 'guest'
       };
       authState.mockUsers[account] = user;
+      setState({ auth: authState });
       setLoggedIn(account, user);
     });
 
@@ -1710,6 +1865,7 @@
         password,
         role: 'student'
       };
+      setState({ auth: authState });
       el.registerPanel.classList.add('hidden');
       showMessage('注册成功，请使用新账号登录');
     });
@@ -1745,6 +1901,7 @@
       }
 
       authState.mockUsers[account].password = newPassword;
+      setState({ auth: authState });
       el.forgotPanel.classList.add('hidden');
       showMessage('密码重置成功，请重新登录');
     });
@@ -1752,9 +1909,6 @@
     el.logoutBtn.addEventListener('click', clearSession);
     el.roleSelect.addEventListener('change', (event) => {
       setRole(event.target.value);
-      if (uiState.currentView === 'help') {
-        renderHelpCenter();
-      }
     });
     el.openCreateProject.addEventListener('click', () => openProjectPanel('create'));
     el.projectCancel.addEventListener('click', closeProjectPanel);
@@ -1762,27 +1916,33 @@
     el.projectList.addEventListener('click', handleProjectListClick);
     el.browseSearch.addEventListener('input', (event) => {
       projectState.browseFilters.keyword = event.target.value.trim();
-      renderProjectBrowse();
+      setState({ ui: uiState });
     });
     el.browseCategory.addEventListener('change', (event) => {
       projectState.browseFilters.category = event.target.value;
-      renderProjectBrowse();
+      setState({ ui: uiState });
     });
     el.browseBudget.addEventListener('change', (event) => {
       projectState.browseFilters.budget = event.target.value;
-      renderProjectBrowse();
+      setState({ ui: uiState });
     });
     el.browseProjectList.addEventListener('click', handleBrowseAndApplicationClick);
     el.browseDetail.addEventListener('click', handleBrowseAndApplicationClick);
     el.applicationList.addEventListener('click', handleBrowseAndApplicationClick);
     el.adminContent.addEventListener('click', handleAdminAction);
     el.downloadContract.addEventListener('click', downloadContractFile);
+    el.resetDemoBtn.addEventListener('click', () => {
+      if (confirm('确定重置所有演示数据吗？')) {
+        resetDemoData();
+      }
+    });
     el.navItems.forEach((item) => {
-      item.addEventListener('click', () => switchView(item.dataset.view || 'manage'));
+      item.addEventListener('click', () => renderPage(item.dataset.view || 'manage'));
     });
 
     populateProjectStatusOptions();
-    switchView(uiState.currentView);
+    hydrateState();
+    render();
   </script>
 </body>
 </html>
