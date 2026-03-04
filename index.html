@@ -119,6 +119,31 @@
     }
     .muted { color: #6b7280; font-size: 13px; }
 
+    .message-layout {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 12px;
+    }
+    .message-types { display: grid; gap: 8px; }
+    .message-type-btn {
+      display: flex; justify-content: space-between; align-items: center;
+      background: #eef2ff; color: #1e3a8a;
+    }
+    .message-type-btn.active { background: #1d4ed8; color: #fff; }
+    .unread-badge {
+      min-width: 18px; height: 18px; border-radius: 999px;
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 0 6px; font-size: 12px; background: #dc2626; color: #fff;
+    }
+    .unread-badge.is-zero { visibility: hidden; }
+    .message-main { display: grid; gap: 10px; }
+    .message-head { display: flex; justify-content: flex-end; }
+    .message-list { display: grid; gap: 8px; }
+    .message-item { border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; cursor: pointer; }
+    .message-item.unread { border-left: 4px solid #2563eb; background: #eff6ff; }
+    .message-item.active { box-shadow: 0 0 0 2px rgba(37,99,235,.15); }
+    .message-detail { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; min-height: 130px; }
+
     .toast-wrap {
       position: fixed;
       right: 16px;
@@ -142,6 +167,7 @@
       .app-shell { grid-template-columns: 1fr; }
       .project-layout { grid-template-columns: 1fr; }
       .filters { grid-template-columns: 1fr; }
+      .message-layout { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -250,6 +276,21 @@
       </div>
     </div>
 
+
+    <div class="card" id="tpl-message-center" style="margin-top:16px;">
+      <h3>消息中心</h3>
+      <div class="message-layout">
+        <aside class="message-types" id="messageTypes"></aside>
+        <div class="message-main">
+          <div class="message-head">
+            <button id="markAllRead" class="secondary">全部标为已读</button>
+          </div>
+          <div id="messageList" class="message-list"></div>
+          <div id="messageDetail" class="message-detail muted">请选择消息查看详情。</div>
+        </div>
+      </div>
+    </div>
+
     <div class="card" id="tpl-apply-manage" style="margin-top:16px;">
       <h3>申请管理与合同</h3>
       <div id="applicationList"></div>
@@ -349,6 +390,7 @@
       { key: 'dashboard', name: 'Dashboard', templateId: 'tpl-dashboard', roles: ['student', 'club', 'sponsor', 'admin'] },
       { key: 'projectManage', name: '管理后台', templateId: 'tpl-project-manage', roles: ['club', 'admin'] },
       { key: 'projectBrowse', name: '项目浏览', templateId: 'tpl-project-browse', roles: ['student', 'sponsor', 'admin'] },
+      { key: 'messageCenter', name: '消息中心', templateId: 'tpl-message-center', roles: ['student', 'club', 'sponsor', 'admin'] },
       { key: 'applyManage', name: '申请管理', templateId: 'tpl-apply-manage', roles: ['student', 'club', 'sponsor', 'admin'] }
     ];
 
@@ -405,6 +447,43 @@
       selectedApplicationId: null
     };
 
+
+    const messageTypeMap = {
+      system: '系统通知',
+      project: '项目通知',
+      cooperation: '合作消息'
+    };
+
+    const roleMessageSeed = {
+      admin: [
+        { type: 'system', title: '系统巡检完成', content: '平台于今日 09:00 完成例行巡检，服务运行正常。', time: '2026-03-04 09:05', read: false },
+        { type: 'project', title: '预算异常提醒', content: '“创新创业大赛”预算波动超过 20%，请尽快复核。', time: '2026-03-04 10:10', read: false },
+        { type: 'cooperation', title: '审批协同', content: '社团“青年志愿社”请求管理员协助处理合作争议。', time: '2026-03-03 16:40', read: true }
+      ],
+      sponsor: [
+        { type: 'system', title: '企业认证通过', content: '恭喜，您的赞助商资质已通过审核，可参与项目申请。', time: '2026-03-04 08:30', read: false },
+        { type: 'project', title: '项目有新动态', content: '“校园音乐节”新增权益包，建议尽快查看并调整报价。', time: '2026-03-04 11:25', read: false },
+        { type: 'cooperation', title: '社团发来合作邀约', content: '创协希望与贵司就“创新创业大赛”开展联合宣发。', time: '2026-03-03 19:20', read: true }
+      ],
+      club: [
+        { type: 'system', title: '社团资料待补充', content: '请在本周内完善社团负责人联系方式，以免影响项目上线。', time: '2026-03-04 09:45', read: false },
+        { type: 'project', title: '赞助申请更新', content: '“校园音乐节”收到 1 条新的赞助申请，请及时处理。', time: '2026-03-04 12:05', read: false },
+        { type: 'cooperation', title: '场地方沟通', content: '体育馆管理方同意将场地档期提前一天。', time: '2026-03-03 14:10', read: true }
+      ],
+      student: [
+        { type: 'system', title: '账户安全提醒', content: '检测到您在新设备登录，请确认是否本人操作。', time: '2026-03-04 07:55', read: false },
+        { type: 'project', title: '项目招募开启', content: '“创新创业大赛”开放学生志愿者报名。', time: '2026-03-04 13:30', read: false },
+        { type: 'cooperation', title: '小组协作消息', content: '你的队友分享了最新执行清单，请及时查收。', time: '2026-03-03 21:00', read: true }
+      ]
+    };
+
+    const messageState = {
+      messageStore: [],
+      selectedType: 'system',
+      selectedMessageId: null,
+      loadedRole: null
+    };
+
     const el = {
       authView: document.getElementById('authView'),
       appView: document.getElementById('appView'),
@@ -439,6 +518,10 @@
       forgotError: document.getElementById('forgotError'),
       forgotSubmit: document.getElementById('forgotSubmit'),
       forgotCancel: document.getElementById('forgotCancel'),
+      messageTypes: document.getElementById('messageTypes'),
+      messageList: document.getElementById('messageList'),
+      messageDetail: document.getElementById('messageDetail'),
+      markAllRead: document.getElementById('markAllRead'),
       dashboardStats: document.getElementById('dashboardStats'),
       projectList: document.getElementById('projectList'),
       projectDetail: document.getElementById('projectDetail'),
@@ -511,6 +594,19 @@
       el.roleSelect.value = role in roleConfig ? role : 'student';
     }
 
+
+    function getUserSummaryText(user, role) {
+      if (!user) {
+        return '未登录';
+      }
+      const roleLabel = roleConfig[role]?.label || roleConfig.student.label;
+      const name = (user.username || user.account || '用户').trim();
+      if (name === roleLabel) {
+        return `用户：${name}`;
+      }
+      return `用户：${name}（${roleLabel}）`;
+    }
+
     function buildRoleMenu(role) {
       const allowedPages = getAllowedPages(role);
       el.pageMenu.innerHTML = allowedPages.map((page) => `<button class="menu-item ${page.key === currentPageKey ? 'active' : ''}" data-page="${page.key}">${page.name}</button>`).join('');
@@ -557,15 +653,80 @@
       buildRoleMenu(authState.role);
     }
 
+    function loadMessagesForRole(role) {
+      const seed = roleMessageSeed[role] || roleMessageSeed.student;
+      messageState.messageStore = seed.map((item, index) => ({ id: index + 1, ...item }));
+      messageState.selectedType = 'system';
+      messageState.selectedMessageId = null;
+      messageState.loadedRole = role;
+    }
+
+    function getMessageUnreadCount(type) {
+      return messageState.messageStore.filter((item) => item.type === type && !item.read).length;
+    }
+
+    function getMessageById(id) {
+      return messageState.messageStore.find((item) => item.id === id);
+    }
+
+    function renderMessageDetail() {
+      const message = getMessageById(messageState.selectedMessageId);
+      if (!message) {
+        el.messageDetail.textContent = '请选择消息查看详情。';
+        el.messageDetail.classList.add('muted');
+        return;
+      }
+      el.messageDetail.classList.remove('muted');
+      el.messageDetail.innerHTML = `
+        <h4>${message.title}</h4>
+        <p class="muted">类型：${messageTypeMap[message.type]} ｜ 时间：${message.time}</p>
+        <p>${message.content}</p>
+      `;
+    }
+
+    function renderMessageCenter() {
+      const types = Object.entries(messageTypeMap);
+      el.messageTypes.innerHTML = types.map(([key, label]) => {
+        const unreadCount = getMessageUnreadCount(key);
+        return `
+          <button class="message-type-btn ${messageState.selectedType === key ? 'active' : ''}" data-type="${key}">
+            <span>${label}</span>
+            <span class="unread-badge ${unreadCount === 0 ? 'is-zero' : ''}">${unreadCount}</span>
+          </button>
+        `;
+      }).join('');
+
+      const messageList = messageState.messageStore.filter((item) => item.type === messageState.selectedType);
+      if (!messageList.some((item) => item.id === messageState.selectedMessageId)) {
+        messageState.selectedMessageId = null;
+      }
+      el.messageList.innerHTML = messageList.length
+        ? messageList.map((item) => `
+          <article class="message-item ${item.read ? '' : 'unread'} ${messageState.selectedMessageId === item.id ? 'active' : ''}" data-id="${item.id}">
+            <div class="project-head">
+              <strong>${item.title}</strong>
+              <span class="muted">${item.time}</span>
+            </div>
+            <div class="muted">${item.content.slice(0, 36)}${item.content.length > 36 ? '...' : ''}</div>
+          </article>
+        `).join('')
+        : '<div class="message-item muted">当前分类暂无消息。</div>';
+      renderMessageDetail();
+    }
+
     function setRole(role) {
       const normalized = roleConfig[role] ? role : 'student';
       authState.role = normalized;
       syncRoleTexts(normalized);
       if (authState.currentUser) {
-        el.userSummary.textContent = `用户：${authState.currentUser.username}（${roleConfig[normalized].label}）`;
+        el.userSummary.textContent = getUserSummaryText(authState.currentUser, normalized);
+      }
+      if (messageState.loadedRole !== normalized) {
+        loadMessagesForRole(normalized);
       }
       ensurePagePermission(normalized);
       renderDashboardStats();
+      renderMessageCenter();
       renderProjectManage();
       renderProjectBrowse();
       renderApplicationManage();
@@ -940,6 +1101,39 @@
       }
     }
 
+    function handleMessageTypeClick(event) {
+      const btn = event.target.closest('button[data-type]');
+      if (!btn) {
+        return;
+      }
+      messageState.selectedType = btn.dataset.type;
+      messageState.selectedMessageId = null;
+      renderMessageCenter();
+    }
+
+    function handleMessageListClick(event) {
+      const card = event.target.closest('.message-item[data-id]');
+      if (!card) {
+        return;
+      }
+      const id = Number(card.dataset.id);
+      const message = getMessageById(id);
+      if (!message) {
+        return;
+      }
+      message.read = true;
+      messageState.selectedMessageId = id;
+      renderMessageCenter();
+    }
+
+    function markAllMessageRead() {
+      messageState.messageStore.forEach((item) => {
+        item.read = true;
+      });
+      renderMessageCenter();
+      showToast('已将全部消息标记为已读');
+    }
+
     function downloadContractFile() {
       const app = projectState.applicationStore.find((item) => item.id === projectState.selectedApplicationId);
       if (!app) {
@@ -963,7 +1157,7 @@
       authState.currentUser = { account: userKey, ...userData };
       authState.role = roleConfig[userData.role] ? userData.role : 'student';
 
-      el.userSummary.textContent = `用户：${userData.username}（${roleConfig[authState.role].label}）`;
+      el.userSummary.textContent = getUserSummaryText(authState.currentUser, authState.role);
       el.authView.classList.add('hidden');
       el.appView.classList.remove('hidden');
       el.logoutBtn.classList.remove('hidden');
@@ -1161,6 +1355,9 @@
     el.browseProjectList.addEventListener('click', handleBrowseAndApplicationClick);
     el.browseDetail.addEventListener('click', handleBrowseAndApplicationClick);
     el.applicationList.addEventListener('click', handleBrowseAndApplicationClick);
+    el.messageTypes.addEventListener('click', handleMessageTypeClick);
+    el.messageList.addEventListener('click', handleMessageListClick);
+    el.markAllRead.addEventListener('click', markAllMessageRead);
     el.downloadContract.addEventListener('click', downloadContractFile);
     el.pageMenu.addEventListener('click', (event) => {
       const button = event.target.closest('button[data-page]');
