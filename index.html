@@ -3,14 +3,24 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>统一登录示例</title>
+  <title>高校赞助对接平台</title>
   <style>
     body { font-family: Arial, sans-serif; background: #f5f7fb; margin: 0; }
     .topbar {
       display: flex; justify-content: space-between; align-items: center;
       background: #1f3a8a; color: #fff; padding: 12px 20px;
     }
-    .container { max-width: 1024px; margin: 40px auto; padding: 0 16px; }
+    .topbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .user-summary { background: rgba(255,255,255,.12); border-radius: 8px; padding: 4px 10px; }
+    .role-switch { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+    .role-switch span { opacity: .9; }
+    .role-switch select { width: auto; min-width: 120px; }
+    .container { max-width: 1120px; margin: 24px auto; padding: 0 16px; }
+    .app-shell { display: grid; grid-template-columns: 220px 1fr; gap: 16px; align-items: start; }
+    .side-nav { position: sticky; top: 16px; }
+    #pageMenu { display: grid; gap: 8px; }
+    .menu-item { width: 100%; text-align: left; }
+    .menu-item.active { background: #1d4ed8; }
     .card {
       background: #fff; border-radius: 10px; padding: 20px;
       box-shadow: 0 10px 30px rgba(0,0,0,.08);
@@ -148,6 +158,7 @@
     .toast.error { background: #b91c1c; }
 
     @media (max-width: 860px) {
+      .app-shell { grid-template-columns: 1fr; }
       .project-layout { grid-template-columns: 1fr; }
       .filters { grid-template-columns: 1fr; }
       .app-shell { grid-template-columns: 1fr; }
@@ -156,9 +167,17 @@
 </head>
 <body>
   <header class="topbar">
-    <strong>高校赞助平台（Mock）</strong>
-    <div>
-      <span id="currentUser">未登录</span>
+    <strong>高校赞助对接平台</strong>
+    <div class="topbar-right">
+      <span id="userSummary" class="user-summary">未登录</span>
+      <label class="role-switch" for="roleSelect"><span>角色</span>
+        <select id="roleSelect">
+          <option value="student">学生</option>
+          <option value="club">社团</option>
+          <option value="sponsor">赞助商</option>
+          <option value="admin">管理员</option>
+        </select>
+      </label>
       <button id="logoutBtn" class="secondary hidden">退出登录</button>
     </div>
   </header>
@@ -412,8 +431,11 @@
     const el = {
       authView: document.getElementById('authView'),
       appView: document.getElementById('appView'),
-      currentUser: document.getElementById('currentUser'),
+      userSummary: document.getElementById('userSummary'),
       currentRole: document.getElementById('currentRole'),
+      roleSelect: document.getElementById('roleSelect'),
+      pageMenu: document.getElementById('pageMenu'),
+      pageContainer: document.getElementById('pageContainer'),
       logoutBtn: document.getElementById('logoutBtn'),
       loginAccount: document.getElementById('loginAccount'),
       loginPassword: document.getElementById('loginPassword'),
@@ -468,6 +490,7 @@
     };
 
     const accountRegex = /^(1\d{10}|[^\s@]+@[^\s@]+\.[^\s@]+)$/;
+    let currentPageKey = null;
 
     function showError(message) {
       el.loginError.textContent = message;
@@ -520,6 +543,156 @@
     }
 
 
+
+    function getAllowedPages(role) {
+      return pages.filter((page) => page.roles.includes(role));
+    }
+
+    function syncRoleTexts(role) {
+      const cfg = roleConfig[role] || roleConfig.student;
+      el.currentRole.textContent = cfg.label;
+      el.roleSelect.value = role in roleConfig ? role : 'student';
+    }
+
+
+    function getUserSummaryText(user, role) {
+      if (!user) {
+        return '未登录';
+      }
+      const roleLabel = roleConfig[role]?.label || roleConfig.student.label;
+      const name = (user.username || user.account || '用户').trim();
+      if (name === roleLabel) {
+        return `用户：${name}`;
+      }
+      return `用户：${name}（${roleLabel}）`;
+    }
+
+    function buildRoleMenu(role) {
+      const allowedPages = getAllowedPages(role);
+      el.pageMenu.innerHTML = allowedPages.map((page) => `<button class="menu-item ${page.key === currentPageKey ? 'active' : ''}" data-page="${page.key}">${page.name}</button>`).join('');
+    }
+
+    function ensurePagePermission(role) {
+      const allowedPages = getAllowedPages(role);
+      if (!allowedPages.length) {
+        currentPageKey = null;
+        return;
+      }
+      const hasCurrent = allowedPages.some((page) => page.key === currentPageKey);
+      if (!hasCurrent) {
+        const fallback = roleConfig[role]?.defaultPage;
+        currentPageKey = allowedPages.some((page) => page.key === fallback) ? fallback : allowedPages[0].key;
+      }
+    }
+
+    function applyRoleActionVisibility(container, role) {
+      container.querySelectorAll('[data-roles]').forEach((node) => {
+        const allowedRoles = node.dataset.roles.split(',').map((v) => v.trim());
+        node.classList.toggle('hidden', !allowedRoles.includes(role));
+      });
+    }
+
+    function applyRoleContentVisibility(container, role) {
+      container.querySelectorAll('[data-role-block]').forEach((node) => {
+        node.classList.toggle('hidden', node.dataset.roleBlock !== role);
+      });
+    }
+
+    function renderCurrentPage() {
+      pages.forEach((page) => {
+        const section = document.getElementById(page.templateId);
+        section.classList.toggle('hidden', page.key !== currentPageKey);
+      });
+      const current = pages.find((page) => page.key === currentPageKey);
+      if (!current) {
+        return;
+      }
+      const activeEl = document.getElementById(current.templateId);
+      applyRoleActionVisibility(activeEl, authState.role);
+      applyRoleContentVisibility(activeEl, authState.role);
+      buildRoleMenu(authState.role);
+    }
+
+    function loadMessagesForRole(role) {
+      const seed = roleMessageSeed[role] || roleMessageSeed.student;
+      messageState.messageStore = seed.map((item, index) => ({ id: index + 1, ...item }));
+      messageState.selectedType = 'system';
+      messageState.selectedMessageId = null;
+      messageState.loadedRole = role;
+    }
+
+    function getMessageUnreadCount(type) {
+      return messageState.messageStore.filter((item) => item.type === type && !item.read).length;
+    }
+
+    function getMessageById(id) {
+      return messageState.messageStore.find((item) => item.id === id);
+    }
+
+    function renderMessageDetail() {
+      const message = getMessageById(messageState.selectedMessageId);
+      if (!message) {
+        el.messageDetail.textContent = '请选择消息查看详情。';
+        el.messageDetail.classList.add('muted');
+        return;
+      }
+      el.messageDetail.classList.remove('muted');
+      el.messageDetail.innerHTML = `
+        <h4>${message.title}</h4>
+        <p class="muted">类型：${messageTypeMap[message.type]} ｜ 时间：${message.time}</p>
+        <p>${message.content}</p>
+      `;
+    }
+
+    function renderMessageCenter() {
+      const types = Object.entries(messageTypeMap);
+      el.messageTypes.innerHTML = types.map(([key, label]) => {
+        const unreadCount = getMessageUnreadCount(key);
+        return `
+          <button class="message-type-btn ${messageState.selectedType === key ? 'active' : ''}" data-type="${key}">
+            <span>${label}</span>
+            <span class="unread-badge ${unreadCount === 0 ? 'is-zero' : ''}">${unreadCount}</span>
+          </button>
+        `;
+      }).join('');
+
+      const messageList = messageState.messageStore.filter((item) => item.type === messageState.selectedType);
+      if (!messageList.some((item) => item.id === messageState.selectedMessageId)) {
+        messageState.selectedMessageId = null;
+      }
+      el.messageList.innerHTML = messageList.length
+        ? messageList.map((item) => `
+          <article class="message-item ${item.read ? '' : 'unread'} ${messageState.selectedMessageId === item.id ? 'active' : ''}" data-id="${item.id}">
+            <div class="project-head">
+              <strong>${item.title}</strong>
+              <span class="muted">${item.time}</span>
+            </div>
+            <div class="muted">${item.content.slice(0, 36)}${item.content.length > 36 ? '...' : ''}</div>
+          </article>
+        `).join('')
+        : '<div class="message-item muted">当前分类暂无消息。</div>';
+      renderMessageDetail();
+    }
+
+    function setRole(role) {
+      const normalized = roleConfig[role] ? role : 'student';
+      authState.role = normalized;
+      syncRoleTexts(normalized);
+      if (authState.currentUser) {
+        el.userSummary.textContent = getUserSummaryText(authState.currentUser, normalized);
+      }
+      if (messageState.loadedRole !== normalized) {
+        loadMessagesForRole(normalized);
+      }
+      ensurePagePermission(normalized);
+      renderDashboardStats();
+      renderMessageCenter();
+      renderProjectManage();
+      renderProjectBrowse();
+      renderApplicationManage();
+      renderCurrentPage();
+    }
+
     function renderDashboardStats() {
       const total = projectState.projectStore.length;
       const statsByStatus = Object.keys(PROJECT_STATUS).reduce((acc, key) => {
@@ -535,7 +708,13 @@
         <div class="stat-item"><span>已完成</span><strong>${statsByStatus.completed}</strong></div>
         <div class="stat-item"><span>已下架</span><strong>${statsByStatus.offline}</strong></div>
         <div class="stat-item"><span>总预算</span><strong>¥${allBudget.toLocaleString()}</strong></div>
+        <div class="stat-item" data-role-block="student"><span>学生专属</span><strong>可申请项目 ${Math.max(total - statsByStatus.offline, 0)}</strong></div>
+        <div class="stat-item" data-role-block="sponsor"><span>赞助商推荐</span><strong>匹配项目 ${projectState.projectStore.filter((p) => p.budget >= 50000).length}</strong></div>
+        <div class="stat-item" data-role-block="admin"><span>管理员指标</span><strong>待审核申请 ${projectState.applicationStore.filter((a) => a.status === 'applying').length}</strong></div>
+        <div class="stat-item" data-role-block="club"><span>社团运营</span><strong>待推进项目 ${projectState.projectStore.filter((p) => p.status === 'applying' || p.status === 'executing').length}</strong></div>
       `;
+      applyRoleContentVisibility(el.dashboardStats, authState.role);
+
     }
 
     function renderProjectDetail(projectId) {
@@ -578,14 +757,120 @@
           <div>赞助商：${project.sponsor}</div>
           <div>预算：¥${Number(project.budget).toLocaleString()}</div>
           <div class="project-actions">
-            <button data-action="edit" data-id="${project.id}">编辑</button>
-            <button class="warning" data-action="offline" data-id="${project.id}">下架</button>
-            <button class="danger-btn" data-action="delete" data-id="${project.id}">删除</button>
+            <button data-action="edit" data-id="${project.id}" data-roles="club,admin">编辑</button>
+            <button class="warning" data-action="offline" data-id="${project.id}" data-roles="admin">下架</button>
+            <button class="danger-btn" data-action="delete" data-id="${project.id}" data-roles="admin">删除</button>
           </div>
         </article>
       `).join('');
 
       renderProjectDetail(projectState.selectedProjectId);
+      applyRoleActionVisibility(document.getElementById('tpl-project-manage'), authState.role || 'student');
+    }
+
+    function getFilteredProjects() {
+      return projectState.projectStore.filter((project) => {
+        const keyword = projectState.browseFilters.keyword.toLowerCase();
+        const matchKeyword = !keyword || [project.name, project.description, project.sponsor, project.category]
+          .join(' ')
+          .toLowerCase()
+          .includes(keyword);
+        const matchCategory = projectState.browseFilters.category === 'all' || project.category === projectState.browseFilters.category;
+        const budget = Number(project.budget || 0);
+        const matchBudget = projectState.browseFilters.budget === 'all'
+          || (projectState.browseFilters.budget === 'low' && budget < 50000)
+          || (projectState.browseFilters.budget === 'mid' && budget >= 50000 && budget <= 80000)
+          || (projectState.browseFilters.budget === 'high' && budget > 80000);
+        return matchKeyword && matchCategory && matchBudget;
+      });
+    }
+
+    function renderProjectBrowseDetail(projectId) {
+      const project = projectState.projectStore.find((item) => item.id === projectId);
+      if (!project) {
+        el.browseDetail.innerHTML = '未找到项目详情。';
+        return;
+      }
+      el.browseDetail.innerHTML = `
+        <h4>${project.name} ${getStatusTag(project.status)}</h4>
+        <p class="muted">分类：${project.category || '-'} ｜预算：¥${Number(project.budget).toLocaleString()}</p>
+        <p>${project.description || '-'}</p>
+        <label for="applyAmount">赞助金额</label>
+        <input id="applyAmount" type="number" min="1" placeholder="请输入赞助金额" />
+        <label for="applyRemark">申请备注</label>
+        <textarea id="applyRemark" placeholder="可填写补充说明"></textarea>
+        <div class="row">
+          <button data-action="submit-application" data-id="${project.id}" data-roles="student,sponsor,admin">提交申请</button>
+        </div>
+      `;
+      applyRoleActionVisibility(el.browseDetail, authState.role || 'student');
+      applyRoleContentVisibility(el.browseDetail, authState.role || 'student');
+    }
+
+    function renderProjectBrowse() {
+      const list = getFilteredProjects();
+      el.browseProjectList.innerHTML = list.length
+        ? list.map((project) => `
+          <article class="project-card" data-id="${project.id}">
+            <div class="project-head">
+              <strong>${project.name}</strong>
+              ${getStatusTag(project.status)}
+            </div>
+            <div class="muted">分类：${project.category || '-'} ｜预算：¥${Number(project.budget).toLocaleString()}</div>
+            <div class="project-actions">
+              <button data-action="view-detail" data-id="${project.id}">查看详情</button>
+            </div>
+          </article>
+        `).join('')
+        : '<div class="project-card">当前筛选条件下无项目。</div>';
+      applyRoleActionVisibility(document.getElementById('tpl-project-browse'), authState.role || 'student');
+      applyRoleContentVisibility(document.getElementById('tpl-project-browse'), authState.role || 'student');
+    }
+
+    function getCurrentTimeText() {
+      const now = new Date();
+      const p = (v) => String(v).padStart(2, '0');
+      return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}`;
+    }
+
+    function generateContractText(app) {
+      if (!app) {
+        return '请选择申请后预览合同条款。';
+      }
+      return `《高校项目赞助合同（预览）》\n\n甲方：高校赞助平台\n乙方：赞助商（当前登录用户）\n项目名称：${app.projectName}\n赞助金额：¥${Number(app.amount).toLocaleString()}\n当前状态：${PROJECT_STATUS[app.status]?.label || app.status}\n申请时间：${app.time}\n\n条款：\n1. 乙方应按约定支付赞助金额。\n2. 甲方负责项目执行与成果反馈。\n3. 双方确认后合同生效。\n4. 备注：${app.remark || '无'}\n`;
+    }
+
+    function renderContractPreview() {
+      const app = projectState.applicationStore.find((item) => item.id === projectState.selectedApplicationId);
+      el.contractPreview.textContent = generateContractText(app);
+    }
+
+    function renderApplicationManage() {
+      el.applicationList.innerHTML = projectState.applicationStore.length
+        ? projectState.applicationStore.map((app) => {
+          const nextStatusFlow = { applying: 'signed', signed: 'executing', executing: 'completed' };
+          const nextStatus = nextStatusFlow[app.status];
+          const withdrawText = app.status === 'withdrawn' ? '恢复申请' : '撤回申请';
+          return `
+            <div class="application-item ${projectState.selectedApplicationId === app.id ? 'active' : ''}">
+              <div class="project-head">
+                <strong>${app.projectName}</strong>
+                ${getStatusTag(app.status)}
+              </div>
+              <div class="muted">金额：¥${Number(app.amount).toLocaleString()} ｜ 时间：${app.time}</div>
+              <div>备注：${app.remark || '-'}</div>
+              <div class="project-actions">
+                <button data-action="select-application" data-id="${app.id}">查看合同</button>
+                <button class="secondary" data-action="edit-application" data-id="${app.id}" data-roles="student,sponsor,admin">修改申请</button>
+                <button class="warning" data-action="withdraw-application" data-id="${app.id}" data-roles="student,sponsor,admin">${withdrawText}</button>
+                ${nextStatus ? `<button data-action="advance-status" data-id="${app.id}" data-roles="admin,club">流转到${PROJECT_STATUS[nextStatus].label}</button>` : ''}
+              </div>
+            </div>
+          `;
+        }).join('')
+        : '<p class="muted">暂无申请记录。</p>';
+      renderContractPreview();
+      applyRoleActionVisibility(document.getElementById('tpl-apply-manage'), authState.role || 'student');
     }
 
     function getFilteredProjects() {
@@ -897,10 +1182,9 @@
     function setLoggedIn(userKey, userData) {
       authState.isLoggedIn = true;
       authState.currentUser = { account: userKey, ...userData };
-      authState.role = userData.role;
+      authState.role = roleConfig[userData.role] ? userData.role : 'student';
 
-      el.currentUser.textContent = `当前用户：${userData.username}`;
-      el.currentRole.textContent = userData.role;
+      el.userSummary.textContent = getUserSummaryText(authState.currentUser, authState.role);
       el.authView.classList.add('hidden');
       el.appView.classList.remove('hidden');
       el.logoutBtn.classList.remove('hidden');
@@ -917,7 +1201,7 @@
       authState.currentUser = null;
       authState.role = null;
 
-      el.currentUser.textContent = '未登录';
+      el.userSummary.textContent = '未登录';
       el.currentRole.textContent = '-';
       el.authView.classList.remove('hidden');
       el.appView.classList.add('hidden');
