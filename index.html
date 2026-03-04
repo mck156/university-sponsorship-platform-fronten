@@ -119,30 +119,24 @@
     }
     .muted { color: #6b7280; font-size: 13px; }
 
-    .message-layout {
+
+    .app-shell {
       display: grid;
       grid-template-columns: 220px 1fr;
-      gap: 12px;
+      gap: 16px;
+      align-items: start;
     }
-    .message-types { display: grid; gap: 8px; }
-    .message-type-btn {
-      display: flex; justify-content: space-between; align-items: center;
-      background: #eef2ff; color: #1e3a8a;
+    .nav-card { background: #e5e7eb; }
+    .nav-item {
+      width: 100%;
+      text-align: left;
+      margin-bottom: 8px;
+      background: #2563eb;
     }
-    .message-type-btn.active { background: #1d4ed8; color: #fff; }
-    .unread-badge {
-      min-width: 18px; height: 18px; border-radius: 999px;
-      display: inline-flex; align-items: center; justify-content: center;
-      padding: 0 6px; font-size: 12px; background: #dc2626; color: #fff;
-    }
-    .unread-badge.is-zero { visibility: hidden; }
-    .message-main { display: grid; gap: 10px; }
-    .message-head { display: flex; justify-content: flex-end; }
-    .message-list { display: grid; gap: 8px; }
-    .message-item { border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; cursor: pointer; }
-    .message-item.unread { border-left: 4px solid #2563eb; background: #eff6ff; }
-    .message-item.active { box-shadow: 0 0 0 2px rgba(37,99,235,.15); }
-    .message-detail { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; min-height: 130px; }
+    .nav-item.active { box-shadow: inset 0 0 0 2px rgba(255,255,255,.45); }
+    .content-card { background: #e5e7eb; }
+    .view-section { display: none; }
+    .view-section.active { display: block; }
 
     .toast-wrap {
       position: fixed;
@@ -167,7 +161,7 @@
       .app-shell { grid-template-columns: 1fr; }
       .project-layout { grid-template-columns: 1fr; }
       .filters { grid-template-columns: 1fr; }
-      .message-layout { grid-template-columns: 1fr; }
+      .app-shell { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -225,83 +219,73 @@
   </main>
 
   <main id="appView" class="container hidden app-shell">
-    <aside class="card side-nav">
+    <aside class="card nav-card">
       <h3>功能导航</h3>
-      <nav id="pageMenu"></nav>
+      <button class="nav-item" data-view="dashboard">Dashboard</button>
+      <button class="nav-item active" data-view="manage">管理后台</button>
+      <button class="nav-item" data-view="browse">项目浏览</button>
+      <button class="nav-item" data-view="message">消息中心</button>
+      <button class="nav-item" data-view="apply">申请管理</button>
     </aside>
-    <section id="pageContainer">
-    <div class="card" id="tpl-dashboard">
-      <h2>主界面</h2>
-      <p>你已登录成功，欢迎使用系统。当前角色：<strong id="currentRole">-</strong></p>
-      <div id="dashboardStats" class="dashboard-stats"></div>
-    </div>
 
-    <div class="card" id="tpl-project-manage" style="margin-top:16px;">
-      <div class="project-head">
-        <h3>项目管理</h3>
-        <button id="openCreateProject" data-roles="club,admin">创建项目</button>
+    <section class="card content-card">
+      <div id="tpl-dashboard" class="view-section">
+        <h2>主界面</h2>
+        <p>你已登录成功，欢迎使用系统。当前角色：<strong id="currentRole">-</strong></p>
+        <div id="dashboardStats" class="dashboard-stats"></div>
       </div>
-      <div class="project-layout">
-        <div id="projectList" class="project-list"></div>
-        <div>
-          <h3>项目详情</h3>
-          <div id="projectDetail">请选择一个项目查看详情。</div>
+
+      <div id="tpl-project-manage" class="view-section active">
+        <div class="project-head">
+          <h3>项目管理</h3>
+          <button id="openCreateProject">创建项目</button>
         </div>
-      </div>
-    </div>
-
-    <div class="card" id="tpl-project-browse" style="margin-top:16px;">
-      <h3>项目浏览（赞助商）</h3>
-      <div class="filters">
-        <input id="browseSearch" placeholder="搜索项目关键字" />
-        <select id="browseCategory">
-          <option value="all">全部分类</option>
-          <option value="文体活动">文体活动</option>
-          <option value="创新创业">创新创业</option>
-          <option value="公益实践">公益实践</option>
-        </select>
-        <select id="browseBudget">
-          <option value="all">全部预算</option>
-          <option value="low">5万以下</option>
-          <option value="mid">5万-8万</option>
-          <option value="high">8万以上</option>
-        </select>
-      </div>
-      <div id="browseProjectList" class="project-list"></div>
-      <div id="browseDetail" class="browse-detail">
-        <p data-role-block="sponsor"><strong>赞助商推荐：</strong>优先关注“创新创业大赛”。</p>
-        <p data-role-block="student"><strong>学生提示：</strong>可参与项目志愿与执行岗位。</p>
-        <p data-role-block="admin"><strong>管理提示：</strong>请关注预算异常项目。</p>
-        点击“查看详情”后可填写赞助申请。
-      </div>
-    </div>
-
-
-    <div class="card" id="tpl-message-center" style="margin-top:16px;">
-      <h3>消息中心</h3>
-      <div class="message-layout">
-        <aside class="message-types" id="messageTypes"></aside>
-        <div class="message-main">
-          <div class="message-head">
-            <button id="markAllRead" class="secondary">全部标为已读</button>
+        <div class="project-layout">
+          <div id="projectList" class="project-list"></div>
+          <div>
+            <h3>项目详情</h3>
+            <div id="projectDetail">请选择一个项目查看详情。</div>
           </div>
-          <div id="messageList" class="message-list"></div>
-          <div id="messageDetail" class="message-detail muted">请选择消息查看详情。</div>
         </div>
       </div>
-    </div>
 
-    <div class="card" id="tpl-apply-manage" style="margin-top:16px;">
-      <h3>申请管理与合同</h3>
-      <div id="applicationList"></div>
-      <div class="contract-preview">
-        <h4>合同预览</h4>
-        <div id="contractPreview" class="muted">请选择申请后预览合同条款。</div>
-        <div class="row">
-          <button id="downloadContract">下载合同</button>
+      <div id="tpl-project-browse" class="view-section">
+        <h3>项目浏览（赞助商）</h3>
+        <div class="filters">
+          <input id="browseSearch" placeholder="搜索项目关键字" />
+          <select id="browseCategory">
+            <option value="all">全部分类</option>
+            <option value="文体活动">文体活动</option>
+            <option value="创新创业">创新创业</option>
+            <option value="公益实践">公益实践</option>
+          </select>
+          <select id="browseBudget">
+            <option value="all">全部预算</option>
+            <option value="low">5万以下</option>
+            <option value="mid">5万-8万</option>
+            <option value="high">8万以上</option>
+          </select>
+        </div>
+        <div id="browseProjectList" class="project-list"></div>
+        <div id="browseDetail" class="browse-detail">点击“查看详情”后可填写赞助申请。</div>
+      </div>
+
+      <div id="tpl-message" class="view-section">
+        <h3>消息中心</h3>
+        <p class="muted">当前暂无新消息，后续可在此处接入通知流。</p>
+      </div>
+
+      <div id="tpl-apply-manage" class="view-section">
+        <h3>申请管理与合同</h3>
+        <div id="applicationList"></div>
+        <div class="contract-preview">
+          <h4>合同预览</h4>
+          <div id="contractPreview" class="muted">请选择申请后预览合同条款。</div>
+          <div class="row">
+            <button id="downloadContract">下载合同</button>
+          </div>
         </div>
       </div>
-    </div>
     </section>
   </main>
 
@@ -378,21 +362,14 @@
       offline: { label: '已下架', className: 'tag-offline' }
     };
 
-
-    const roleConfig = {
-      student: { label: '学生', defaultPage: 'dashboard' },
-      club: { label: '社团', defaultPage: 'projectManage' },
-      sponsor: { label: '赞助商', defaultPage: 'projectBrowse' },
-      admin: { label: '管理员', defaultPage: 'projectManage' }
+    const VIEW_TO_ELEMENT_ID = {
+      dashboard: 'tpl-dashboard',
+      manage: 'tpl-project-manage',
+      browse: 'tpl-project-browse',
+      message: 'tpl-message',
+      apply: 'tpl-apply-manage'
     };
-
-    const pages = [
-      { key: 'dashboard', name: 'Dashboard', templateId: 'tpl-dashboard', roles: ['student', 'club', 'sponsor', 'admin'] },
-      { key: 'projectManage', name: '管理后台', templateId: 'tpl-project-manage', roles: ['club', 'admin'] },
-      { key: 'projectBrowse', name: '项目浏览', templateId: 'tpl-project-browse', roles: ['student', 'sponsor', 'admin'] },
-      { key: 'messageCenter', name: '消息中心', templateId: 'tpl-message-center', roles: ['student', 'club', 'sponsor', 'admin'] },
-      { key: 'applyManage', name: '申请管理', templateId: 'tpl-apply-manage', roles: ['student', 'club', 'sponsor', 'admin'] }
-    ];
+    const VIEW_NAMES = Object.keys(VIEW_TO_ELEMENT_ID);
 
     // 统一会话状态 + mock 用户表
     const authState = {
@@ -406,6 +383,10 @@
         'admin@example.com': { username: '管理员', password: 'Admin123', role: 'admin' },
         '13800000000': { username: '测试同学', password: 'Test123', role: 'student' }
       }
+    };
+
+    const uiState = {
+      currentView: "manage"
     };
 
     const projectState = {
@@ -447,43 +428,6 @@
       selectedApplicationId: null
     };
 
-
-    const messageTypeMap = {
-      system: '系统通知',
-      project: '项目通知',
-      cooperation: '合作消息'
-    };
-
-    const roleMessageSeed = {
-      admin: [
-        { type: 'system', title: '系统巡检完成', content: '平台于今日 09:00 完成例行巡检，服务运行正常。', time: '2026-03-04 09:05', read: false },
-        { type: 'project', title: '预算异常提醒', content: '“创新创业大赛”预算波动超过 20%，请尽快复核。', time: '2026-03-04 10:10', read: false },
-        { type: 'cooperation', title: '审批协同', content: '社团“青年志愿社”请求管理员协助处理合作争议。', time: '2026-03-03 16:40', read: true }
-      ],
-      sponsor: [
-        { type: 'system', title: '企业认证通过', content: '恭喜，您的赞助商资质已通过审核，可参与项目申请。', time: '2026-03-04 08:30', read: false },
-        { type: 'project', title: '项目有新动态', content: '“校园音乐节”新增权益包，建议尽快查看并调整报价。', time: '2026-03-04 11:25', read: false },
-        { type: 'cooperation', title: '社团发来合作邀约', content: '创协希望与贵司就“创新创业大赛”开展联合宣发。', time: '2026-03-03 19:20', read: true }
-      ],
-      club: [
-        { type: 'system', title: '社团资料待补充', content: '请在本周内完善社团负责人联系方式，以免影响项目上线。', time: '2026-03-04 09:45', read: false },
-        { type: 'project', title: '赞助申请更新', content: '“校园音乐节”收到 1 条新的赞助申请，请及时处理。', time: '2026-03-04 12:05', read: false },
-        { type: 'cooperation', title: '场地方沟通', content: '体育馆管理方同意将场地档期提前一天。', time: '2026-03-03 14:10', read: true }
-      ],
-      student: [
-        { type: 'system', title: '账户安全提醒', content: '检测到您在新设备登录，请确认是否本人操作。', time: '2026-03-04 07:55', read: false },
-        { type: 'project', title: '项目招募开启', content: '“创新创业大赛”开放学生志愿者报名。', time: '2026-03-04 13:30', read: false },
-        { type: 'cooperation', title: '小组协作消息', content: '你的队友分享了最新执行清单，请及时查收。', time: '2026-03-03 21:00', read: true }
-      ]
-    };
-
-    const messageState = {
-      messageStore: [],
-      selectedType: 'system',
-      selectedMessageId: null,
-      loadedRole: null
-    };
-
     const el = {
       authView: document.getElementById('authView'),
       appView: document.getElementById('appView'),
@@ -518,10 +462,7 @@
       forgotError: document.getElementById('forgotError'),
       forgotSubmit: document.getElementById('forgotSubmit'),
       forgotCancel: document.getElementById('forgotCancel'),
-      messageTypes: document.getElementById('messageTypes'),
-      messageList: document.getElementById('messageList'),
-      messageDetail: document.getElementById('messageDetail'),
-      markAllRead: document.getElementById('markAllRead'),
+      navItems: Array.from(document.querySelectorAll('.nav-item')),
       dashboardStats: document.getElementById('dashboardStats'),
       projectList: document.getElementById('projectList'),
       projectDetail: document.getElementById('projectDetail'),
@@ -582,6 +523,25 @@
       const cfg = PROJECT_STATUS[status] || PROJECT_STATUS.applying;
       return `<span class="tag ${cfg.className}">${cfg.label}</span>`;
     }
+    function getViewElementByName(viewName) {
+      const elementId = VIEW_TO_ELEMENT_ID[viewName];
+      return elementId ? document.getElementById(elementId) : null;
+    }
+
+    function switchView(viewName) {
+      const safeView = VIEW_NAMES.includes(viewName) ? viewName : 'manage';
+      uiState.currentView = safeView;
+      VIEW_NAMES.forEach((name) => {
+        const viewEl = getViewElementByName(name);
+        if (viewEl) {
+          viewEl.classList.toggle('active', name === safeView);
+        }
+      });
+      el.navItems.forEach((item) => {
+        item.classList.toggle('active', item.dataset.view === safeView);
+      });
+    }
+
 
 
     function getAllowedPages(role) {
@@ -913,6 +873,106 @@
       applyRoleActionVisibility(document.getElementById('tpl-apply-manage'), authState.role || 'student');
     }
 
+    function getFilteredProjects() {
+      return projectState.projectStore.filter((project) => {
+        const keyword = projectState.browseFilters.keyword.toLowerCase();
+        const matchKeyword = !keyword || [project.name, project.description, project.sponsor, project.category]
+          .join(' ')
+          .toLowerCase()
+          .includes(keyword);
+        const matchCategory = projectState.browseFilters.category === 'all' || project.category === projectState.browseFilters.category;
+        const budget = Number(project.budget || 0);
+        const matchBudget = projectState.browseFilters.budget === 'all'
+          || (projectState.browseFilters.budget === 'low' && budget < 50000)
+          || (projectState.browseFilters.budget === 'mid' && budget >= 50000 && budget <= 80000)
+          || (projectState.browseFilters.budget === 'high' && budget > 80000);
+        return matchKeyword && matchCategory && matchBudget;
+      });
+    }
+
+    function renderProjectBrowseDetail(projectId) {
+      const project = projectState.projectStore.find((item) => item.id === projectId);
+      if (!project) {
+        el.browseDetail.innerHTML = '未找到项目详情。';
+        return;
+      }
+      el.browseDetail.innerHTML = `
+        <h4>${project.name} ${getStatusTag(project.status)}</h4>
+        <p class="muted">分类：${project.category || '-'} ｜预算：¥${Number(project.budget).toLocaleString()}</p>
+        <p>${project.description || '-'}</p>
+        <label for="applyAmount">赞助金额</label>
+        <input id="applyAmount" type="number" min="1" placeholder="请输入赞助金额" />
+        <label for="applyRemark">申请备注</label>
+        <textarea id="applyRemark" placeholder="可填写补充说明"></textarea>
+        <div class="row">
+          <button data-action="submit-application" data-id="${project.id}">提交申请</button>
+        </div>
+      `;
+    }
+
+    function renderProjectBrowse() {
+      const list = getFilteredProjects();
+      el.browseProjectList.innerHTML = list.length
+        ? list.map((project) => `
+          <article class="project-card" data-id="${project.id}">
+            <div class="project-head">
+              <strong>${project.name}</strong>
+              ${getStatusTag(project.status)}
+            </div>
+            <div class="muted">分类：${project.category || '-'} ｜预算：¥${Number(project.budget).toLocaleString()}</div>
+            <div class="project-actions">
+              <button data-action="view-detail" data-id="${project.id}">查看详情</button>
+            </div>
+          </article>
+        `).join('')
+        : '<div class="project-card">当前筛选条件下无项目。</div>';
+    }
+
+    function getCurrentTimeText() {
+      const now = new Date();
+      const p = (v) => String(v).padStart(2, '0');
+      return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}`;
+    }
+
+    function generateContractText(app) {
+      if (!app) {
+        return '请选择申请后预览合同条款。';
+      }
+      return `《高校项目赞助合同（预览）》\n\n甲方：高校赞助平台\n乙方：赞助商（当前登录用户）\n项目名称：${app.projectName}\n赞助金额：¥${Number(app.amount).toLocaleString()}\n当前状态：${PROJECT_STATUS[app.status]?.label || app.status}\n申请时间：${app.time}\n\n条款：\n1. 乙方应按约定支付赞助金额。\n2. 甲方负责项目执行与成果反馈。\n3. 双方确认后合同生效。\n4. 备注：${app.remark || '无'}\n`;
+    }
+
+    function renderContractPreview() {
+      const app = projectState.applicationStore.find((item) => item.id === projectState.selectedApplicationId);
+      el.contractPreview.textContent = generateContractText(app);
+    }
+
+    function renderApplicationManage() {
+      el.applicationList.innerHTML = projectState.applicationStore.length
+        ? projectState.applicationStore.map((app) => {
+          const nextStatusFlow = { applying: 'signed', signed: 'executing', executing: 'completed' };
+          const nextStatus = nextStatusFlow[app.status];
+          const withdrawText = app.status === 'withdrawn' ? '恢复申请' : '撤回申请';
+          return `
+            <div class="application-item ${projectState.selectedApplicationId === app.id ? 'active' : ''}">
+              <div class="project-head">
+                <strong>${app.projectName}</strong>
+                ${getStatusTag(app.status)}
+              </div>
+              <div class="muted">金额：¥${Number(app.amount).toLocaleString()} ｜ 时间：${app.time}</div>
+              <div>备注：${app.remark || '-'}</div>
+              <div class="project-actions">
+                <button data-action="select-application" data-id="${app.id}">查看合同</button>
+                <button class="secondary" data-action="edit-application" data-id="${app.id}">修改申请</button>
+                <button class="warning" data-action="withdraw-application" data-id="${app.id}">${withdrawText}</button>
+                ${nextStatus ? `<button data-action="advance-status" data-id="${app.id}">流转到${PROJECT_STATUS[nextStatus].label}</button>` : ''}
+              </div>
+            </div>
+          `;
+        }).join('')
+        : '<p class="muted">暂无申请记录。</p>';
+      renderContractPreview();
+    }
+
     function openProjectPanel(mode, project) {
       el.projectFormError.textContent = '';
       el.projectPanel.classList.remove('hidden');
@@ -1101,39 +1161,6 @@
       }
     }
 
-    function handleMessageTypeClick(event) {
-      const btn = event.target.closest('button[data-type]');
-      if (!btn) {
-        return;
-      }
-      messageState.selectedType = btn.dataset.type;
-      messageState.selectedMessageId = null;
-      renderMessageCenter();
-    }
-
-    function handleMessageListClick(event) {
-      const card = event.target.closest('.message-item[data-id]');
-      if (!card) {
-        return;
-      }
-      const id = Number(card.dataset.id);
-      const message = getMessageById(id);
-      if (!message) {
-        return;
-      }
-      message.read = true;
-      messageState.selectedMessageId = id;
-      renderMessageCenter();
-    }
-
-    function markAllMessageRead() {
-      messageState.messageStore.forEach((item) => {
-        item.read = true;
-      });
-      renderMessageCenter();
-      showToast('已将全部消息标记为已读');
-    }
-
     function downloadContractFile() {
       const app = projectState.applicationStore.find((item) => item.id === projectState.selectedApplicationId);
       if (!app) {
@@ -1162,7 +1189,11 @@
       el.appView.classList.remove('hidden');
       el.logoutBtn.classList.remove('hidden');
       showMessage('登录成功');
-      setRole(authState.role);
+      switchView(uiState.currentView);
+      renderProjectManage();
+      renderProjectBrowse();
+      renderApplicationManage();
+      renderDashboardStats();
     }
 
     function clearSession() {
@@ -1355,26 +1386,13 @@
     el.browseProjectList.addEventListener('click', handleBrowseAndApplicationClick);
     el.browseDetail.addEventListener('click', handleBrowseAndApplicationClick);
     el.applicationList.addEventListener('click', handleBrowseAndApplicationClick);
-    el.messageTypes.addEventListener('click', handleMessageTypeClick);
-    el.messageList.addEventListener('click', handleMessageListClick);
-    el.markAllRead.addEventListener('click', markAllMessageRead);
     el.downloadContract.addEventListener('click', downloadContractFile);
-    el.pageMenu.addEventListener('click', (event) => {
-      const button = event.target.closest('button[data-page]');
-      if (!button) {
-        return;
-      }
-      currentPageKey = button.dataset.page;
-      renderCurrentPage();
-    });
-    el.roleSelect.addEventListener('change', (event) => {
-      if (!authState.isLoggedIn) {
-        return showToast('请先登录后再切换角色', 'error');
-      }
-      setRole(event.target.value);
+    el.navItems.forEach((item) => {
+      item.addEventListener('click', () => switchView(item.dataset.view || 'manage'));
     });
 
     populateProjectStatusOptions();
+    switchView(uiState.currentView);
   </script>
 </body>
 </html>
