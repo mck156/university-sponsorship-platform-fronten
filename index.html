@@ -343,6 +343,15 @@
       offline: { label: '已下架', className: 'tag-offline' }
     };
 
+    const VIEW_TO_ELEMENT_ID = {
+      dashboard: 'tpl-dashboard',
+      manage: 'tpl-project-manage',
+      browse: 'tpl-project-browse',
+      message: 'tpl-message',
+      apply: 'tpl-apply-manage'
+    };
+    const VIEW_NAMES = Object.keys(VIEW_TO_ELEMENT_ID);
+
     // 统一会话状态 + mock 用户表
     const authState = {
       isLoggedIn: false,
@@ -492,26 +501,21 @@
       return `<span class="tag ${cfg.className}">${cfg.label}</span>`;
     }
     function getViewElementByName(viewName) {
-      const map = {
-        dashboard: document.getElementById('tpl-dashboard'),
-        manage: document.getElementById('tpl-project-manage'),
-        browse: document.getElementById('tpl-project-browse'),
-        message: document.getElementById('tpl-message'),
-        apply: document.getElementById('tpl-apply-manage')
-      };
-      return map[viewName];
+      const elementId = VIEW_TO_ELEMENT_ID[viewName];
+      return elementId ? document.getElementById(elementId) : null;
     }
 
     function switchView(viewName) {
-      uiState.currentView = viewName;
-      ['dashboard', 'manage', 'browse', 'message', 'apply'].forEach((name) => {
+      const safeView = VIEW_NAMES.includes(viewName) ? viewName : 'manage';
+      uiState.currentView = safeView;
+      VIEW_NAMES.forEach((name) => {
         const viewEl = getViewElementByName(name);
         if (viewEl) {
-          viewEl.classList.toggle('active', name === viewName);
+          viewEl.classList.toggle('active', name === safeView);
         }
       });
       el.navItems.forEach((item) => {
-        item.classList.toggle('active', item.dataset.view === viewName);
+        item.classList.toggle('active', item.dataset.view === safeView);
       });
     }
 
@@ -1100,7 +1104,7 @@
     el.applicationList.addEventListener('click', handleBrowseAndApplicationClick);
     el.downloadContract.addEventListener('click', downloadContractFile);
     el.navItems.forEach((item) => {
-      item.addEventListener('click', () => switchView(item.dataset.view));
+      item.addEventListener('click', () => switchView(item.dataset.view || 'manage'));
     });
 
     populateProjectStatusOptions();
