@@ -179,6 +179,14 @@
     .feedback-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
     .feedback-table th, .feedback-table td { border: 1px solid #dbe3ef; padding: 8px; text-align: left; font-size: 13px; }
     .feedback-table th { background: #f8fafc; }
+    .admin-grid { display: grid; gap: 14px; }
+    .admin-grid section { border: 1px solid #dbe3ef; border-radius: 8px; padding: 12px; background: #fff; }
+    .data-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    .data-table th, .data-table td { border: 1px solid #dbe3ef; padding: 8px; text-align: left; font-size: 13px; }
+    .data-table th { background: #f8fafc; }
+    .inline-edit { display: grid; gap: 8px; margin-top: 8px; }
+    .trend-chart { background: #f8fafc; border: 1px solid #dbe3ef; border-radius: 8px; padding: 10px; }
+    .trend-chart svg { width: 100%; height: 160px; display: block; }
 
     @media (max-width: 860px) {
       .app-shell { grid-template-columns: 1fr; }
@@ -249,6 +257,7 @@
       <button class="nav-item" data-view="browse">项目浏览</button>
       <button class="nav-item" data-view="message">消息中心</button>
       <button class="nav-item" data-view="apply">申请管理</button>
+      <button class="nav-item" data-view="admin">系统管理</button>
       <button class="nav-item" data-view="help">帮助中心</button>
     </aside>
 
@@ -309,6 +318,11 @@
             <button id="downloadContract">下载合同</button>
           </div>
         </div>
+      </div>
+
+      <div id="tpl-admin" class="view-section">
+        <h3>管理员数据与操作</h3>
+        <div id="adminContent" class="admin-grid"></div>
       </div>
 
       <div id="tpl-help-center" class="view-section">
@@ -397,6 +411,7 @@
       browse: 'tpl-project-browse',
       message: 'tpl-message',
       apply: 'tpl-apply-manage',
+      admin: 'tpl-admin',
       help: 'tpl-help-center'
     };
     const VIEW_NAMES = Object.keys(VIEW_TO_ELEMENT_ID);
@@ -480,6 +495,25 @@
       selectedApplicationId: null
     };
 
+
+
+    const adminState = {
+      userStore: [
+        { id: 1, account: 'admin@example.com', name: '管理员', role: 'admin', enabled: true },
+        { id: 2, account: '13800000000', name: '测试同学', role: 'student', enabled: true },
+        { id: 3, account: 'club@example.com', name: '社团运营', role: 'club', enabled: true },
+        { id: 4, account: 'sponsor@example.com', name: '品牌赞助商', role: 'sponsor', enabled: false }
+      ],
+      noticeStore: [
+        { id: 1, title: '系统维护通知', content: '本周六 22:00 - 23:00 进行系统维护。', updatedAt: '2026-03-03 18:00' },
+        { id: 2, title: '赞助申报提醒', content: '请各社团在本周内完善申报材料。', updatedAt: '2026-03-04 09:30' }
+      ],
+      logStore: [
+        { id: 1, user: 'system', action: '初始化管理员日志', time: '2026-03-04 09:00', ip: '10.0.0.1' }
+      ],
+      editingNoticeId: null
+    };
+
     const messageTypeMap = { system: '系统通知', project: '项目消息', contract: '合同消息' };
     const roleMessageSeed = {
       student: [{ type: 'system', title: '欢迎使用平台', time: '2026-03-04 09:00', content: '你可以在项目浏览中查看并提交赞助申请。', read: false }],
@@ -535,6 +569,7 @@
       contractPreview: document.getElementById('contractPreview'),
       downloadContract: document.getElementById('downloadContract'),
       helpCenterContent: document.getElementById('helpCenterContent'),
+      adminContent: document.getElementById('adminContent'),
       projectPanel: document.getElementById('projectPanel'),
       projectPanelTitle: document.getElementById('projectPanelTitle'),
       projectName: document.getElementById('projectName'),
@@ -573,6 +608,22 @@
       toast.textContent = message;
       el.toastWrap.appendChild(toast);
       setTimeout(() => toast.remove(), 2200);
+    }
+
+
+    function getUserSummaryText(user, role) {
+      if (!user) {
+        return '未登录';
+      }
+      const roleLabel = roleConfig[role]?.label || '未知角色';
+      return `${user.username || user.account}（${roleLabel}）`;
+    }
+
+    function syncRoleTexts(role) {
+      el.currentRole.textContent = roleConfig[role]?.label || '-';
+      if (el.roleSelect.value !== role) {
+        el.roleSelect.value = role;
+      }
     }
 
     function escapeHtml(value) {
@@ -848,6 +899,66 @@
       renderProjectManage();
       renderProjectBrowse();
       renderApplicationManage();
+      renderAdminPanel();
+    }
+
+    function getMockIp() {
+      return `10.0.0.${Math.floor(Math.random() * 180) + 20}`;
+    }
+
+    function pushAdminLog(action) {
+      if (authState.role !== 'admin') {
+        return;
+      }
+      const username = authState.currentUser?.username || authState.currentUser?.account || '管理员';
+      const nextId = adminState.logStore.length ? Math.max(...adminState.logStore.map((item) => item.id)) + 1 : 1;
+      adminState.logStore.unshift({ id: nextId, user: username, action, time: getCurrentTimeText(), ip: getMockIp() });
+      renderDashboardStats();
+      renderAdminPanel();
+    }
+
+    function getDashboardMetrics() {
+      const projectTotal = projectState.projectStore.length;
+      const userTotal = adminState.userStore.length;
+      const successfulCount = projectState.projectStore.filter((p) => p.status === 'completed').length;
+      const successRate = projectTotal ? Math.round((successfulCount / projectTotal) * 100) : 0;
+      const activeUsers = adminState.userStore.filter((u) => u.enabled).length;
+      const activeRate = userTotal ? Math.round((activeUsers / userTotal) * 100) : 0;
+      return { projectTotal, userTotal, successRate, activeRate };
+    }
+
+    function getActivityTrend() {
+      const labels = [];
+      const values = [];
+      for (let i = 6; i >= 0; i -= 1) {
+        const day = new Date();
+        day.setDate(day.getDate() - i);
+        const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+        labels.push(key.slice(5));
+        const count = adminState.logStore.filter((item) => item.time.startsWith(key)).length;
+        values.push(count);
+      }
+      return { labels, values };
+    }
+
+    function renderTrendSvg() {
+      const { labels, values } = getActivityTrend();
+      const width = 480;
+      const height = 160;
+      const maxValue = Math.max(...values, 1);
+      const step = width / Math.max(values.length - 1, 1);
+      const points = values.map((v, idx) => {
+        const x = idx * step;
+        const y = height - (v / maxValue) * (height - 24) - 12;
+        return `${x},${y}`;
+      }).join(' ');
+      const circles = values.map((v, idx) => {
+        const x = idx * step;
+        const y = height - (v / maxValue) * (height - 24) - 12;
+        return `<circle cx="${x}" cy="${y}" r="3" fill="#2563eb"></circle>`;
+      }).join('');
+      const ticks = labels.map((label, idx) => `<text x="${idx * step}" y="154" text-anchor="middle" font-size="11" fill="#64748b">${label}</text>`).join('');
+      return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none"><polyline fill="none" stroke="#2563eb" stroke-width="2.5" points="${points}"></polyline>${circles}${ticks}</svg>`;
     }
 
     function renderDashboardStats() {
@@ -857,9 +968,13 @@
         return acc;
       }, {});
       const allBudget = projectState.projectStore.reduce((sum, item) => sum + Number(item.budget || 0), 0);
+      const metrics = getDashboardMetrics();
 
       el.dashboardStats.innerHTML = `
-        <div class="stat-item"><span>项目总数</span><strong>${total}</strong></div>
+        <div class="stat-item"><span>项目总数</span><strong>${metrics.projectTotal}</strong></div>
+        <div class="stat-item"><span>用户数</span><strong>${metrics.userTotal}</strong></div>
+        <div class="stat-item"><span>成功率</span><strong>${metrics.successRate}%</strong></div>
+        <div class="stat-item"><span>活跃度</span><strong>${metrics.activeRate}%</strong></div>
         <div class="stat-item"><span>申请中</span><strong>${statsByStatus.applying}</strong></div>
         <div class="stat-item"><span>执行中</span><strong>${statsByStatus.executing}</strong></div>
         <div class="stat-item"><span>已完成</span><strong>${statsByStatus.completed}</strong></div>
@@ -871,7 +986,42 @@
         <div class="stat-item" data-role-block="club"><span>社团运营</span><strong>待推进项目 ${projectState.projectStore.filter((p) => p.status === 'applying' || p.status === 'executing').length}</strong></div>
       `;
       applyRoleContentVisibility(el.dashboardStats, authState.role);
+    }
 
+    function renderAdminPanel() {
+      if (!el.adminContent) return;
+      const noticeRows = adminState.noticeStore.map((notice) => {
+        if (adminState.editingNoticeId === notice.id) {
+          return `<tr><td colspan="4"><div class="inline-edit"><input data-field="title" data-id="${notice.id}" value="${escapeHtml(notice.title)}" /><textarea data-field="content" data-id="${notice.id}">${escapeHtml(notice.content)}</textarea><div class="row"><button data-action="save-notice" data-id="${notice.id}">保存</button><button class="secondary" data-action="cancel-notice">取消</button></div></div></td></tr>`;
+        }
+        return `<tr><td>${notice.id}</td><td>${escapeHtml(notice.title)}</td><td>${notice.updatedAt}</td><td><button data-action="edit-notice" data-id="${notice.id}">编辑</button><button class="danger-btn" data-action="delete-notice" data-id="${notice.id}">删除</button></td></tr>`;
+      }).join('') || '<tr><td colspan="4" class="muted">暂无公告</td></tr>';
+
+      const userRows = adminState.userStore.map((user) => `<tr><td>${user.id}</td><td>${escapeHtml(user.name)}</td><td>${escapeHtml(user.account)}</td><td>${roleConfig[user.role]?.label || user.role}</td><td>${user.enabled ? '启用' : '禁用'}</td><td><button class="${user.enabled ? 'warning' : ''}" data-action="toggle-user" data-id="${user.id}">${user.enabled ? '禁用' : '启用'}</button></td></tr>`).join('');
+
+      const logs = [...adminState.logStore].sort((a, b) => b.time.localeCompare(a.time));
+      const logRows = logs.map((log) => `<tr><td>${log.time}</td><td>${escapeHtml(log.user)}</td><td>${escapeHtml(log.action)}</td><td>${log.ip}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">暂无日志</td></tr>';
+
+      el.adminContent.innerHTML = `
+        <section>
+          <h4>用户管理（userStore）</h4>
+          <table class="data-table"><thead><tr><th>ID</th><th>用户名</th><th>账号</th><th>角色</th><th>状态</th><th>操作</th></tr></thead><tbody>${userRows}</tbody></table>
+        </section>
+        <section>
+          <h4>公告管理（noticeStore）</h4>
+          <div class="row"><button data-action="publish-notice">发布公告</button></div>
+          <table class="data-table"><thead><tr><th>ID</th><th>标题</th><th>更新时间</th><th>操作</th></tr></thead><tbody>${noticeRows}</tbody></table>
+        </section>
+        <section>
+          <h4>系统日志（logStore，只读）</h4>
+          <table class="data-table"><thead><tr><th>时间</th><th>用户</th><th>操作</th><th>IP</th></tr></thead><tbody>${logRows}</tbody></table>
+        </section>
+        <section>
+          <h4>近 7 天管理员活跃趋势</h4>
+          <div class="trend-chart">${renderTrendSvg()}</div>
+        </section>
+      `;
+      applyRoleActionVisibility(el.adminContent, authState.role || 'student');
     }
 
     function renderProjectDetail(projectId) {
@@ -1185,6 +1335,7 @@
         projectState.projectStore[idx] = { ...old, name, sponsor, category, budget, status, description };
         projectState.selectedProjectId = old.id;
         showToast('项目更新成功');
+        pushAdminLog(`更新项目：${name}`);
       } else {
         const nextId = projectState.projectStore.length ? Math.max(...projectState.projectStore.map((p) => p.id)) + 1 : 1;
         const created = {
@@ -1200,6 +1351,7 @@
         projectState.projectStore.push(created);
         projectState.selectedProjectId = created.id;
         showToast('项目创建成功');
+        pushAdminLog(`创建项目：${name}`);
       }
 
       closeProjectPanel();
@@ -1226,6 +1378,7 @@
           renderProjectManage();
           renderProjectBrowse();
           renderDashboardStats();
+          pushAdminLog(`下架项目：${project.name}`);
           return showToast('项目已下架');
         }
         if (button.dataset.action === 'delete') {
@@ -1233,6 +1386,7 @@
           renderProjectManage();
           renderProjectBrowse();
           renderDashboardStats();
+          pushAdminLog(`删除项目：${project.name}`);
           return showToast('项目删除成功');
         }
       }
@@ -1278,6 +1432,8 @@
         });
         projectState.selectedApplicationId = nextId;
         renderApplicationManage();
+        renderAdminPanel();
+        pushAdminLog(`提交申请：${project.name}`);
         showToast('申请提交成功');
         return;
       }
@@ -1301,11 +1457,15 @@
         app.remark = nextRemark.trim();
         app.time = getCurrentTimeText();
         renderApplicationManage();
+        renderAdminPanel();
+        pushAdminLog(`修改申请：${app.projectName}`);
         return showToast('申请已更新');
       }
       if (button.dataset.action === 'withdraw-application') {
         app.status = app.status === 'withdrawn' ? 'applying' : 'withdrawn';
         renderApplicationManage();
+        renderAdminPanel();
+        pushAdminLog(`${app.status === 'withdrawn' ? '撤回' : '恢复'}申请：${app.projectName}`);
         return showToast(app.status === 'withdrawn' ? '申请已撤回' : '申请已恢复');
       }
       if (button.dataset.action === 'advance-status') {
@@ -1313,8 +1473,77 @@
         if (nextStatusFlow[app.status]) {
           app.status = nextStatusFlow[app.status];
           renderApplicationManage();
+          renderAdminPanel();
+          pushAdminLog(`流转申请状态：${app.projectName} -> ${PROJECT_STATUS[app.status].label}`);
           showToast(`状态已流转为${PROJECT_STATUS[app.status].label}`);
         }
+      }
+    }
+
+
+
+    function handleAdminAction(event) {
+      const button = event.target.closest('button[data-action]');
+      if (!button) return;
+      if (authState.role !== 'admin') {
+        showToast('仅管理员可操作', 'error');
+        return;
+      }
+      const id = Number(button.dataset.id);
+      if (button.dataset.action === 'toggle-user') {
+        const user = adminState.userStore.find((item) => item.id === id);
+        if (!user) return;
+        user.enabled = !user.enabled;
+        pushAdminLog(`${user.enabled ? '启用' : '禁用'}用户：${user.name}`);
+        renderAdminPanel();
+        showToast(`用户已${user.enabled ? '启用' : '禁用'}`);
+        return;
+      }
+      if (button.dataset.action === 'publish-notice') {
+        const nextId = adminState.noticeStore.length ? Math.max(...adminState.noticeStore.map((item) => item.id)) + 1 : 1;
+        adminState.noticeStore.unshift({ id: nextId, title: '新公告标题', content: '请编辑公告内容', updatedAt: getCurrentTimeText() });
+        adminState.editingNoticeId = nextId;
+        pushAdminLog(`发布公告：ID ${nextId}`);
+        renderAdminPanel();
+        return;
+      }
+      if (button.dataset.action === 'edit-notice') {
+        adminState.editingNoticeId = id;
+        renderAdminPanel();
+        return;
+      }
+      if (button.dataset.action === 'cancel-notice') {
+        adminState.editingNoticeId = null;
+        renderAdminPanel();
+        return;
+      }
+      if (button.dataset.action === 'save-notice') {
+        const notice = adminState.noticeStore.find((item) => item.id === id);
+        if (!notice) return;
+        const titleInput = el.adminContent.querySelector(`input[data-field="title"][data-id="${id}"]`);
+        const contentInput = el.adminContent.querySelector(`textarea[data-field="content"][data-id="${id}"]`);
+        const title = titleInput?.value.trim() || '';
+        const content = contentInput?.value.trim() || '';
+        if (!title || !content) {
+          showToast('标题和内容不能为空', 'error');
+          return;
+        }
+        notice.title = title;
+        notice.content = content;
+        notice.updatedAt = getCurrentTimeText();
+        adminState.editingNoticeId = null;
+        pushAdminLog(`编辑公告：${title}`);
+        renderAdminPanel();
+        showToast('公告已更新');
+        return;
+      }
+      if (button.dataset.action === 'delete-notice') {
+        const notice = adminState.noticeStore.find((item) => item.id === id);
+        adminState.noticeStore = adminState.noticeStore.filter((item) => item.id !== id);
+        adminState.editingNoticeId = null;
+        pushAdminLog(`删除公告：${notice?.title || id}`);
+        renderAdminPanel();
+        showToast('公告已删除');
       }
     }
 
@@ -1546,6 +1775,7 @@
     el.browseProjectList.addEventListener('click', handleBrowseAndApplicationClick);
     el.browseDetail.addEventListener('click', handleBrowseAndApplicationClick);
     el.applicationList.addEventListener('click', handleBrowseAndApplicationClick);
+    el.adminContent.addEventListener('click', handleAdminAction);
     el.downloadContract.addEventListener('click', downloadContractFile);
     el.navItems.forEach((item) => {
       item.addEventListener('click', () => switchView(item.dataset.view || 'manage'));
