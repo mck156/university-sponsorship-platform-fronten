@@ -3,14 +3,24 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>统一登录示例</title>
+  <title>高校赞助对接平台</title>
   <style>
     body { font-family: Arial, sans-serif; background: #f5f7fb; margin: 0; }
     .topbar {
       display: flex; justify-content: space-between; align-items: center;
       background: #1f3a8a; color: #fff; padding: 12px 20px;
     }
-    .container { max-width: 1024px; margin: 40px auto; padding: 0 16px; }
+    .topbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .user-summary { background: rgba(255,255,255,.12); border-radius: 8px; padding: 4px 10px; }
+    .role-switch { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+    .role-switch span { opacity: .9; }
+    .role-switch select { width: auto; min-width: 120px; }
+    .container { max-width: 1120px; margin: 24px auto; padding: 0 16px; }
+    .app-shell { display: grid; grid-template-columns: 220px 1fr; gap: 16px; align-items: start; }
+    .side-nav { position: sticky; top: 16px; }
+    #pageMenu { display: grid; gap: 8px; }
+    .menu-item { width: 100%; text-align: left; }
+    .menu-item.active { background: #1d4ed8; }
     .card {
       background: #fff; border-radius: 10px; padding: 20px;
       box-shadow: 0 10px 30px rgba(0,0,0,.08);
@@ -129,6 +139,7 @@
     .toast.error { background: #b91c1c; }
 
     @media (max-width: 860px) {
+      .app-shell { grid-template-columns: 1fr; }
       .project-layout { grid-template-columns: 1fr; }
       .filters { grid-template-columns: 1fr; }
     }
@@ -136,9 +147,17 @@
 </head>
 <body>
   <header class="topbar">
-    <strong>高校赞助平台（Mock）</strong>
-    <div>
-      <span id="currentUser">未登录</span>
+    <strong>高校赞助对接平台</strong>
+    <div class="topbar-right">
+      <span id="userSummary" class="user-summary">未登录</span>
+      <label class="role-switch" for="roleSelect"><span>角色</span>
+        <select id="roleSelect">
+          <option value="student">学生</option>
+          <option value="club">社团</option>
+          <option value="sponsor">赞助商</option>
+          <option value="admin">管理员</option>
+        </select>
+      </label>
       <button id="logoutBtn" class="secondary hidden">退出登录</button>
     </div>
   </header>
@@ -179,7 +198,12 @@
     </div>
   </main>
 
-  <main id="appView" class="container hidden">
+  <main id="appView" class="container hidden app-shell">
+    <aside class="card side-nav">
+      <h3>功能导航</h3>
+      <nav id="pageMenu"></nav>
+    </aside>
+    <section id="pageContainer">
     <div class="card" id="tpl-dashboard">
       <h2>主界面</h2>
       <p>你已登录成功，欢迎使用系统。当前角色：<strong id="currentRole">-</strong></p>
@@ -189,7 +213,7 @@
     <div class="card" id="tpl-project-manage" style="margin-top:16px;">
       <div class="project-head">
         <h3>项目管理</h3>
-        <button id="openCreateProject">创建项目</button>
+        <button id="openCreateProject" data-roles="club,admin">创建项目</button>
       </div>
       <div class="project-layout">
         <div id="projectList" class="project-list"></div>
@@ -218,7 +242,12 @@
         </select>
       </div>
       <div id="browseProjectList" class="project-list"></div>
-      <div id="browseDetail" class="browse-detail">点击“查看详情”后可填写赞助申请。</div>
+      <div id="browseDetail" class="browse-detail">
+        <p data-role-block="sponsor"><strong>赞助商推荐：</strong>优先关注“创新创业大赛”。</p>
+        <p data-role-block="student"><strong>学生提示：</strong>可参与项目志愿与执行岗位。</p>
+        <p data-role-block="admin"><strong>管理提示：</strong>请关注预算异常项目。</p>
+        点击“查看详情”后可填写赞助申请。
+      </div>
     </div>
 
     <div class="card" id="tpl-apply-manage" style="margin-top:16px;">
@@ -232,6 +261,7 @@
         </div>
       </div>
     </div>
+    </section>
   </main>
 
   <section id="registerPanel" class="panel hidden">
@@ -307,6 +337,21 @@
       offline: { label: '已下架', className: 'tag-offline' }
     };
 
+
+    const roleConfig = {
+      student: { label: '学生', defaultPage: 'dashboard' },
+      club: { label: '社团', defaultPage: 'projectManage' },
+      sponsor: { label: '赞助商', defaultPage: 'projectBrowse' },
+      admin: { label: '管理员', defaultPage: 'projectManage' }
+    };
+
+    const pages = [
+      { key: 'dashboard', name: 'Dashboard', templateId: 'tpl-dashboard', roles: ['student', 'club', 'sponsor', 'admin'] },
+      { key: 'projectManage', name: '管理后台', templateId: 'tpl-project-manage', roles: ['club', 'admin'] },
+      { key: 'projectBrowse', name: '项目浏览', templateId: 'tpl-project-browse', roles: ['student', 'sponsor', 'admin'] },
+      { key: 'applyManage', name: '申请管理', templateId: 'tpl-apply-manage', roles: ['student', 'club', 'sponsor', 'admin'] }
+    ];
+
     // 统一会话状态 + mock 用户表
     const authState = {
       isLoggedIn: false,
@@ -363,8 +408,11 @@
     const el = {
       authView: document.getElementById('authView'),
       appView: document.getElementById('appView'),
-      currentUser: document.getElementById('currentUser'),
+      userSummary: document.getElementById('userSummary'),
       currentRole: document.getElementById('currentRole'),
+      roleSelect: document.getElementById('roleSelect'),
+      pageMenu: document.getElementById('pageMenu'),
+      pageContainer: document.getElementById('pageContainer'),
       logoutBtn: document.getElementById('logoutBtn'),
       loginAccount: document.getElementById('loginAccount'),
       loginPassword: document.getElementById('loginPassword'),
@@ -418,6 +466,7 @@
     };
 
     const accountRegex = /^(1\d{10}|[^\s@]+@[^\s@]+\.[^\s@]+)$/;
+    let currentPageKey = null;
 
     function showError(message) {
       el.loginError.textContent = message;
@@ -451,6 +500,78 @@
       return `<span class="tag ${cfg.className}">${cfg.label}</span>`;
     }
 
+
+    function getAllowedPages(role) {
+      return pages.filter((page) => page.roles.includes(role));
+    }
+
+    function syncRoleTexts(role) {
+      const cfg = roleConfig[role] || roleConfig.student;
+      el.currentRole.textContent = cfg.label;
+      el.roleSelect.value = role in roleConfig ? role : 'student';
+    }
+
+    function buildRoleMenu(role) {
+      const allowedPages = getAllowedPages(role);
+      el.pageMenu.innerHTML = allowedPages.map((page) => `<button class="menu-item ${page.key === currentPageKey ? 'active' : ''}" data-page="${page.key}">${page.name}</button>`).join('');
+    }
+
+    function ensurePagePermission(role) {
+      const allowedPages = getAllowedPages(role);
+      if (!allowedPages.length) {
+        currentPageKey = null;
+        return;
+      }
+      const hasCurrent = allowedPages.some((page) => page.key === currentPageKey);
+      if (!hasCurrent) {
+        const fallback = roleConfig[role]?.defaultPage;
+        currentPageKey = allowedPages.some((page) => page.key === fallback) ? fallback : allowedPages[0].key;
+      }
+    }
+
+    function applyRoleActionVisibility(container, role) {
+      container.querySelectorAll('[data-roles]').forEach((node) => {
+        const allowedRoles = node.dataset.roles.split(',').map((v) => v.trim());
+        node.classList.toggle('hidden', !allowedRoles.includes(role));
+      });
+    }
+
+    function applyRoleContentVisibility(container, role) {
+      container.querySelectorAll('[data-role-block]').forEach((node) => {
+        node.classList.toggle('hidden', node.dataset.roleBlock !== role);
+      });
+    }
+
+    function renderCurrentPage() {
+      pages.forEach((page) => {
+        const section = document.getElementById(page.templateId);
+        section.classList.toggle('hidden', page.key !== currentPageKey);
+      });
+      const current = pages.find((page) => page.key === currentPageKey);
+      if (!current) {
+        return;
+      }
+      const activeEl = document.getElementById(current.templateId);
+      applyRoleActionVisibility(activeEl, authState.role);
+      applyRoleContentVisibility(activeEl, authState.role);
+      buildRoleMenu(authState.role);
+    }
+
+    function setRole(role) {
+      const normalized = roleConfig[role] ? role : 'student';
+      authState.role = normalized;
+      syncRoleTexts(normalized);
+      if (authState.currentUser) {
+        el.userSummary.textContent = `用户：${authState.currentUser.username}（${roleConfig[normalized].label}）`;
+      }
+      ensurePagePermission(normalized);
+      renderDashboardStats();
+      renderProjectManage();
+      renderProjectBrowse();
+      renderApplicationManage();
+      renderCurrentPage();
+    }
+
     function renderDashboardStats() {
       const total = projectState.projectStore.length;
       const statsByStatus = Object.keys(PROJECT_STATUS).reduce((acc, key) => {
@@ -466,7 +587,13 @@
         <div class="stat-item"><span>已完成</span><strong>${statsByStatus.completed}</strong></div>
         <div class="stat-item"><span>已下架</span><strong>${statsByStatus.offline}</strong></div>
         <div class="stat-item"><span>总预算</span><strong>¥${allBudget.toLocaleString()}</strong></div>
+        <div class="stat-item" data-role-block="student"><span>学生专属</span><strong>可申请项目 ${Math.max(total - statsByStatus.offline, 0)}</strong></div>
+        <div class="stat-item" data-role-block="sponsor"><span>赞助商推荐</span><strong>匹配项目 ${projectState.projectStore.filter((p) => p.budget >= 50000).length}</strong></div>
+        <div class="stat-item" data-role-block="admin"><span>管理员指标</span><strong>待审核申请 ${projectState.applicationStore.filter((a) => a.status === 'applying').length}</strong></div>
+        <div class="stat-item" data-role-block="club"><span>社团运营</span><strong>待推进项目 ${projectState.projectStore.filter((p) => p.status === 'applying' || p.status === 'executing').length}</strong></div>
       `;
+      applyRoleContentVisibility(el.dashboardStats, authState.role);
+
     }
 
     function renderProjectDetail(projectId) {
@@ -509,14 +636,15 @@
           <div>赞助商：${project.sponsor}</div>
           <div>预算：¥${Number(project.budget).toLocaleString()}</div>
           <div class="project-actions">
-            <button data-action="edit" data-id="${project.id}">编辑</button>
-            <button class="warning" data-action="offline" data-id="${project.id}">下架</button>
-            <button class="danger-btn" data-action="delete" data-id="${project.id}">删除</button>
+            <button data-action="edit" data-id="${project.id}" data-roles="club,admin">编辑</button>
+            <button class="warning" data-action="offline" data-id="${project.id}" data-roles="admin">下架</button>
+            <button class="danger-btn" data-action="delete" data-id="${project.id}" data-roles="admin">删除</button>
           </div>
         </article>
       `).join('');
 
       renderProjectDetail(projectState.selectedProjectId);
+      applyRoleActionVisibility(document.getElementById('tpl-project-manage'), authState.role || 'student');
     }
 
     function getFilteredProjects() {
@@ -551,9 +679,11 @@
         <label for="applyRemark">申请备注</label>
         <textarea id="applyRemark" placeholder="可填写补充说明"></textarea>
         <div class="row">
-          <button data-action="submit-application" data-id="${project.id}">提交申请</button>
+          <button data-action="submit-application" data-id="${project.id}" data-roles="student,sponsor,admin">提交申请</button>
         </div>
       `;
+      applyRoleActionVisibility(el.browseDetail, authState.role || 'student');
+      applyRoleContentVisibility(el.browseDetail, authState.role || 'student');
     }
 
     function renderProjectBrowse() {
@@ -572,6 +702,8 @@
           </article>
         `).join('')
         : '<div class="project-card">当前筛选条件下无项目。</div>';
+      applyRoleActionVisibility(document.getElementById('tpl-project-browse'), authState.role || 'student');
+      applyRoleContentVisibility(document.getElementById('tpl-project-browse'), authState.role || 'student');
     }
 
     function getCurrentTimeText() {
@@ -608,15 +740,16 @@
               <div>备注：${app.remark || '-'}</div>
               <div class="project-actions">
                 <button data-action="select-application" data-id="${app.id}">查看合同</button>
-                <button class="secondary" data-action="edit-application" data-id="${app.id}">修改申请</button>
-                <button class="warning" data-action="withdraw-application" data-id="${app.id}">${withdrawText}</button>
-                ${nextStatus ? `<button data-action="advance-status" data-id="${app.id}">流转到${PROJECT_STATUS[nextStatus].label}</button>` : ''}
+                <button class="secondary" data-action="edit-application" data-id="${app.id}" data-roles="student,sponsor,admin">修改申请</button>
+                <button class="warning" data-action="withdraw-application" data-id="${app.id}" data-roles="student,sponsor,admin">${withdrawText}</button>
+                ${nextStatus ? `<button data-action="advance-status" data-id="${app.id}" data-roles="admin,club">流转到${PROJECT_STATUS[nextStatus].label}</button>` : ''}
               </div>
             </div>
           `;
         }).join('')
         : '<p class="muted">暂无申请记录。</p>';
       renderContractPreview();
+      applyRoleActionVisibility(document.getElementById('tpl-apply-manage'), authState.role || 'student');
     }
 
     function openProjectPanel(mode, project) {
@@ -828,18 +961,14 @@
     function setLoggedIn(userKey, userData) {
       authState.isLoggedIn = true;
       authState.currentUser = { account: userKey, ...userData };
-      authState.role = userData.role;
+      authState.role = roleConfig[userData.role] ? userData.role : 'student';
 
-      el.currentUser.textContent = `当前用户：${userData.username}`;
-      el.currentRole.textContent = userData.role;
+      el.userSummary.textContent = `用户：${userData.username}（${roleConfig[authState.role].label}）`;
       el.authView.classList.add('hidden');
       el.appView.classList.remove('hidden');
       el.logoutBtn.classList.remove('hidden');
       showMessage('登录成功');
-      renderProjectManage();
-      renderProjectBrowse();
-      renderApplicationManage();
-      renderDashboardStats();
+      setRole(authState.role);
     }
 
     function clearSession() {
@@ -847,7 +976,7 @@
       authState.currentUser = null;
       authState.role = null;
 
-      el.currentUser.textContent = '未登录';
+      el.userSummary.textContent = '未登录';
       el.currentRole.textContent = '-';
       el.authView.classList.remove('hidden');
       el.appView.classList.add('hidden');
@@ -1033,6 +1162,20 @@
     el.browseDetail.addEventListener('click', handleBrowseAndApplicationClick);
     el.applicationList.addEventListener('click', handleBrowseAndApplicationClick);
     el.downloadContract.addEventListener('click', downloadContractFile);
+    el.pageMenu.addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-page]');
+      if (!button) {
+        return;
+      }
+      currentPageKey = button.dataset.page;
+      renderCurrentPage();
+    });
+    el.roleSelect.addEventListener('change', (event) => {
+      if (!authState.isLoggedIn) {
+        return showToast('请先登录后再切换角色', 'error');
+      }
+      setRole(event.target.value);
+    });
 
     populateProjectStatusOptions();
   </script>
