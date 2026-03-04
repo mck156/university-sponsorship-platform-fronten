@@ -88,6 +88,27 @@
 
     .applications { padding-left: 18px; margin: 8px 0 0; }
 
+    .filters {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(120px, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .browse-detail, .contract-preview {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 10px;
+      margin-top: 10px;
+    }
+    .application-item {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    .muted { color: #6b7280; font-size: 13px; }
+
     .toast-wrap {
       position: fixed;
       right: 16px;
@@ -109,6 +130,7 @@
 
     @media (max-width: 860px) {
       .project-layout { grid-template-columns: 1fr; }
+      .filters { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -177,6 +199,39 @@
         </div>
       </div>
     </div>
+
+    <div class="card" id="tpl-project-browse" style="margin-top:16px;">
+      <h3>项目浏览（赞助商）</h3>
+      <div class="filters">
+        <input id="browseSearch" placeholder="搜索项目关键字" />
+        <select id="browseCategory">
+          <option value="all">全部分类</option>
+          <option value="文体活动">文体活动</option>
+          <option value="创新创业">创新创业</option>
+          <option value="公益实践">公益实践</option>
+        </select>
+        <select id="browseBudget">
+          <option value="all">全部预算</option>
+          <option value="low">5万以下</option>
+          <option value="mid">5万-8万</option>
+          <option value="high">8万以上</option>
+        </select>
+      </div>
+      <div id="browseProjectList" class="project-list"></div>
+      <div id="browseDetail" class="browse-detail">点击“查看详情”后可填写赞助申请。</div>
+    </div>
+
+    <div class="card" id="tpl-apply-manage" style="margin-top:16px;">
+      <h3>申请管理与合同</h3>
+      <div id="applicationList"></div>
+      <div class="contract-preview">
+        <h4>合同预览</h4>
+        <div id="contractPreview" class="muted">请选择申请后预览合同条款。</div>
+        <div class="row">
+          <button id="downloadContract">下载合同</button>
+        </div>
+      </div>
+    </div>
   </main>
 
   <section id="registerPanel" class="panel hidden">
@@ -220,6 +275,12 @@
       <input id="projectName" placeholder="请输入项目名称" />
       <label for="projectSponsor">赞助商</label>
       <input id="projectSponsor" placeholder="请输入赞助商名称" />
+      <label for="projectCategory">项目分类</label>
+      <select id="projectCategory">
+        <option value="文体活动">文体活动</option>
+        <option value="创新创业">创新创业</option>
+        <option value="公益实践">公益实践</option>
+      </select>
       <label for="projectBudget">预算（元）</label>
       <input id="projectBudget" type="number" min="0" placeholder="请输入预算" />
       <label for="projectStatus">项目状态</label>
@@ -242,6 +303,7 @@
       signed: { label: '已签约', className: 'tag-signed' },
       executing: { label: '执行中', className: 'tag-executing' },
       completed: { label: '已完成', className: 'tag-completed' },
+      withdrawn: { label: '已撤回', className: 'tag-offline' },
       offline: { label: '已下架', className: 'tag-offline' }
     };
 
@@ -264,6 +326,7 @@
         {
           id: 1,
           name: '校园音乐节',
+          category: '文体活动',
           sponsor: '音浪传媒',
           budget: 50000,
           status: 'applying',
@@ -276,6 +339,7 @@
         {
           id: 2,
           name: '创新创业大赛',
+          category: '创新创业',
           sponsor: '创想科技',
           budget: 80000,
           status: 'executing',
@@ -286,7 +350,14 @@
         }
       ],
       selectedProjectId: 1,
-      editingProjectId: null
+      editingProjectId: null,
+      browseFilters: { keyword: '', category: 'all', budget: 'all' },
+      browseSelectedProjectId: null,
+      applicationStore: [
+        { id: 1, projectId: 1, projectName: '校园音乐节', amount: 30000, status: 'applying', time: '2026-03-01 10:00', remark: '提供舞台搭建支持' },
+        { id: 2, projectId: 2, projectName: '创新创业大赛', amount: 80000, status: 'signed', time: '2026-03-02 15:20', remark: '现金赞助，分两期支付' }
+      ],
+      selectedApplicationId: null
     };
 
     const el = {
@@ -323,11 +394,20 @@
       dashboardStats: document.getElementById('dashboardStats'),
       projectList: document.getElementById('projectList'),
       projectDetail: document.getElementById('projectDetail'),
+      browseSearch: document.getElementById('browseSearch'),
+      browseCategory: document.getElementById('browseCategory'),
+      browseBudget: document.getElementById('browseBudget'),
+      browseProjectList: document.getElementById('browseProjectList'),
+      browseDetail: document.getElementById('browseDetail'),
+      applicationList: document.getElementById('applicationList'),
+      contractPreview: document.getElementById('contractPreview'),
+      downloadContract: document.getElementById('downloadContract'),
       projectPanel: document.getElementById('projectPanel'),
       projectPanelTitle: document.getElementById('projectPanelTitle'),
       projectName: document.getElementById('projectName'),
       projectSponsor: document.getElementById('projectSponsor'),
       projectBudget: document.getElementById('projectBudget'),
+      projectCategory: document.getElementById('projectCategory'),
       projectStatus: document.getElementById('projectStatus'),
       projectDescription: document.getElementById('projectDescription'),
       projectFormError: document.getElementById('projectFormError'),
@@ -439,6 +519,106 @@
       renderProjectDetail(projectState.selectedProjectId);
     }
 
+    function getFilteredProjects() {
+      return projectState.projectStore.filter((project) => {
+        const keyword = projectState.browseFilters.keyword.toLowerCase();
+        const matchKeyword = !keyword || [project.name, project.description, project.sponsor, project.category]
+          .join(' ')
+          .toLowerCase()
+          .includes(keyword);
+        const matchCategory = projectState.browseFilters.category === 'all' || project.category === projectState.browseFilters.category;
+        const budget = Number(project.budget || 0);
+        const matchBudget = projectState.browseFilters.budget === 'all'
+          || (projectState.browseFilters.budget === 'low' && budget < 50000)
+          || (projectState.browseFilters.budget === 'mid' && budget >= 50000 && budget <= 80000)
+          || (projectState.browseFilters.budget === 'high' && budget > 80000);
+        return matchKeyword && matchCategory && matchBudget;
+      });
+    }
+
+    function renderProjectBrowseDetail(projectId) {
+      const project = projectState.projectStore.find((item) => item.id === projectId);
+      if (!project) {
+        el.browseDetail.innerHTML = '未找到项目详情。';
+        return;
+      }
+      el.browseDetail.innerHTML = `
+        <h4>${project.name} ${getStatusTag(project.status)}</h4>
+        <p class="muted">分类：${project.category || '-'} ｜预算：¥${Number(project.budget).toLocaleString()}</p>
+        <p>${project.description || '-'}</p>
+        <label for="applyAmount">赞助金额</label>
+        <input id="applyAmount" type="number" min="1" placeholder="请输入赞助金额" />
+        <label for="applyRemark">申请备注</label>
+        <textarea id="applyRemark" placeholder="可填写补充说明"></textarea>
+        <div class="row">
+          <button data-action="submit-application" data-id="${project.id}">提交申请</button>
+        </div>
+      `;
+    }
+
+    function renderProjectBrowse() {
+      const list = getFilteredProjects();
+      el.browseProjectList.innerHTML = list.length
+        ? list.map((project) => `
+          <article class="project-card" data-id="${project.id}">
+            <div class="project-head">
+              <strong>${project.name}</strong>
+              ${getStatusTag(project.status)}
+            </div>
+            <div class="muted">分类：${project.category || '-'} ｜预算：¥${Number(project.budget).toLocaleString()}</div>
+            <div class="project-actions">
+              <button data-action="view-detail" data-id="${project.id}">查看详情</button>
+            </div>
+          </article>
+        `).join('')
+        : '<div class="project-card">当前筛选条件下无项目。</div>';
+    }
+
+    function getCurrentTimeText() {
+      const now = new Date();
+      const p = (v) => String(v).padStart(2, '0');
+      return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}`;
+    }
+
+    function generateContractText(app) {
+      if (!app) {
+        return '请选择申请后预览合同条款。';
+      }
+      return `《高校项目赞助合同（预览）》\n\n甲方：高校赞助平台\n乙方：赞助商（当前登录用户）\n项目名称：${app.projectName}\n赞助金额：¥${Number(app.amount).toLocaleString()}\n当前状态：${PROJECT_STATUS[app.status]?.label || app.status}\n申请时间：${app.time}\n\n条款：\n1. 乙方应按约定支付赞助金额。\n2. 甲方负责项目执行与成果反馈。\n3. 双方确认后合同生效。\n4. 备注：${app.remark || '无'}\n`;
+    }
+
+    function renderContractPreview() {
+      const app = projectState.applicationStore.find((item) => item.id === projectState.selectedApplicationId);
+      el.contractPreview.textContent = generateContractText(app);
+    }
+
+    function renderApplicationManage() {
+      el.applicationList.innerHTML = projectState.applicationStore.length
+        ? projectState.applicationStore.map((app) => {
+          const nextStatusFlow = { applying: 'signed', signed: 'executing', executing: 'completed' };
+          const nextStatus = nextStatusFlow[app.status];
+          const withdrawText = app.status === 'withdrawn' ? '恢复申请' : '撤回申请';
+          return `
+            <div class="application-item ${projectState.selectedApplicationId === app.id ? 'active' : ''}">
+              <div class="project-head">
+                <strong>${app.projectName}</strong>
+                ${getStatusTag(app.status)}
+              </div>
+              <div class="muted">金额：¥${Number(app.amount).toLocaleString()} ｜ 时间：${app.time}</div>
+              <div>备注：${app.remark || '-'}</div>
+              <div class="project-actions">
+                <button data-action="select-application" data-id="${app.id}">查看合同</button>
+                <button class="secondary" data-action="edit-application" data-id="${app.id}">修改申请</button>
+                <button class="warning" data-action="withdraw-application" data-id="${app.id}">${withdrawText}</button>
+                ${nextStatus ? `<button data-action="advance-status" data-id="${app.id}">流转到${PROJECT_STATUS[nextStatus].label}</button>` : ''}
+              </div>
+            </div>
+          `;
+        }).join('')
+        : '<p class="muted">暂无申请记录。</p>';
+      renderContractPreview();
+    }
+
     function openProjectPanel(mode, project) {
       el.projectFormError.textContent = '';
       el.projectPanel.classList.remove('hidden');
@@ -448,6 +628,7 @@
         el.projectName.value = project.name;
         el.projectSponsor.value = project.sponsor;
         el.projectBudget.value = project.budget;
+        el.projectCategory.value = project.category || '文体活动';
         el.projectStatus.value = project.status;
         el.projectDescription.value = project.description || '';
       } else {
@@ -456,6 +637,7 @@
         el.projectName.value = '';
         el.projectSponsor.value = '';
         el.projectBudget.value = '';
+        el.projectCategory.value = '文体活动';
         el.projectStatus.value = 'applying';
         el.projectDescription.value = '';
       }
@@ -468,6 +650,7 @@
     function saveProject() {
       const name = el.projectName.value.trim();
       const sponsor = el.projectSponsor.value.trim();
+      const category = el.projectCategory.value;
       const budget = Number(el.projectBudget.value);
       const status = el.projectStatus.value;
       const description = el.projectDescription.value.trim();
@@ -488,7 +671,7 @@
           return showToast('项目保存失败：未找到要编辑的项目', 'error');
         }
         const old = projectState.projectStore[idx];
-        projectState.projectStore[idx] = { ...old, name, sponsor, budget, status, description };
+        projectState.projectStore[idx] = { ...old, name, sponsor, category, budget, status, description };
         projectState.selectedProjectId = old.id;
         showToast('项目更新成功');
       } else {
@@ -497,6 +680,7 @@
           id: nextId,
           name,
           sponsor,
+          category,
           budget,
           status,
           description,
@@ -509,6 +693,7 @@
 
       closeProjectPanel();
       renderProjectManage();
+      renderProjectBrowse();
       renderDashboardStats();
     }
 
@@ -528,12 +713,14 @@
           project.status = 'offline';
           projectState.selectedProjectId = id;
           renderProjectManage();
+          renderProjectBrowse();
           renderDashboardStats();
           return showToast('项目已下架');
         }
         if (button.dataset.action === 'delete') {
           projectState.projectStore = projectState.projectStore.filter((p) => p.id !== id);
           renderProjectManage();
+          renderProjectBrowse();
           renderDashboardStats();
           return showToast('项目删除成功');
         }
@@ -545,6 +732,97 @@
       }
       projectState.selectedProjectId = Number(card.dataset.id);
       renderProjectManage();
+    }
+
+    function handleBrowseAndApplicationClick(event) {
+      const button = event.target.closest('button[data-action]');
+      if (!button) {
+        return;
+      }
+      const id = Number(button.dataset.id);
+      if (button.dataset.action === 'view-detail') {
+        projectState.browseSelectedProjectId = id;
+        return renderProjectBrowseDetail(id);
+      }
+      if (button.dataset.action === 'submit-application') {
+        const amountInput = document.getElementById('applyAmount');
+        const remarkInput = document.getElementById('applyRemark');
+        const amount = Number(amountInput?.value);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          return showToast('请输入有效的赞助金额', 'error');
+        }
+        const project = projectState.projectStore.find((item) => item.id === id);
+        if (!project) {
+          return showToast('项目不存在', 'error');
+        }
+        const nextId = projectState.applicationStore.length ? Math.max(...projectState.applicationStore.map((item) => item.id)) + 1 : 1;
+        projectState.applicationStore.push({
+          id: nextId,
+          projectId: id,
+          projectName: project.name,
+          amount,
+          status: 'applying',
+          time: getCurrentTimeText(),
+          remark: remarkInput?.value.trim() || ''
+        });
+        projectState.selectedApplicationId = nextId;
+        renderApplicationManage();
+        showToast('申请提交成功');
+        return;
+      }
+
+      const app = projectState.applicationStore.find((item) => item.id === id);
+      if (!app) {
+        return;
+      }
+
+      if (button.dataset.action === 'select-application') {
+        projectState.selectedApplicationId = id;
+        return renderApplicationManage();
+      }
+      if (button.dataset.action === 'edit-application') {
+        const nextAmount = Number(prompt('请输入新的赞助金额', String(app.amount)));
+        if (!Number.isFinite(nextAmount) || nextAmount <= 0) {
+          return showToast('修改失败：金额无效', 'error');
+        }
+        const nextRemark = prompt('请输入新的备注', app.remark || '') || '';
+        app.amount = nextAmount;
+        app.remark = nextRemark.trim();
+        app.time = getCurrentTimeText();
+        renderApplicationManage();
+        return showToast('申请已更新');
+      }
+      if (button.dataset.action === 'withdraw-application') {
+        app.status = app.status === 'withdrawn' ? 'applying' : 'withdrawn';
+        renderApplicationManage();
+        return showToast(app.status === 'withdrawn' ? '申请已撤回' : '申请已恢复');
+      }
+      if (button.dataset.action === 'advance-status') {
+        const nextStatusFlow = { applying: 'signed', signed: 'executing', executing: 'completed' };
+        if (nextStatusFlow[app.status]) {
+          app.status = nextStatusFlow[app.status];
+          renderApplicationManage();
+          showToast(`状态已流转为${PROJECT_STATUS[app.status].label}`);
+        }
+      }
+    }
+
+    function downloadContractFile() {
+      const app = projectState.applicationStore.find((item) => item.id === projectState.selectedApplicationId);
+      if (!app) {
+        return showToast('请先选择申请再下载合同', 'error');
+      }
+      const contractHtml = `<html><body><pre>${generateContractText(app)}</pre></body></html>`;
+      const blob = new Blob([contractHtml], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${app.projectName}-赞助合同.html`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showToast('合同下载已开始');
     }
 
     function setLoggedIn(userKey, userData) {
@@ -559,6 +837,8 @@
       el.logoutBtn.classList.remove('hidden');
       showMessage('登录成功');
       renderProjectManage();
+      renderProjectBrowse();
+      renderApplicationManage();
       renderDashboardStats();
     }
 
@@ -737,6 +1017,22 @@
     el.projectCancel.addEventListener('click', closeProjectPanel);
     el.projectSubmit.addEventListener('click', saveProject);
     el.projectList.addEventListener('click', handleProjectListClick);
+    el.browseSearch.addEventListener('input', (event) => {
+      projectState.browseFilters.keyword = event.target.value.trim();
+      renderProjectBrowse();
+    });
+    el.browseCategory.addEventListener('change', (event) => {
+      projectState.browseFilters.category = event.target.value;
+      renderProjectBrowse();
+    });
+    el.browseBudget.addEventListener('change', (event) => {
+      projectState.browseFilters.budget = event.target.value;
+      renderProjectBrowse();
+    });
+    el.browseProjectList.addEventListener('click', handleBrowseAndApplicationClick);
+    el.browseDetail.addEventListener('click', handleBrowseAndApplicationClick);
+    el.applicationList.addEventListener('click', handleBrowseAndApplicationClick);
+    el.downloadContract.addEventListener('click', downloadContractFile);
 
     populateProjectStatusOptions();
   </script>
