@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>统一登录示例</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f5f7fb; margin: 0; }
+    .topbar {
+      display: flex; justify-content: space-between; align-items: center;
+      background: #1f3a8a; color: #fff; padding: 12px 20px;
+    }
+    .container { max-width: 420px; margin: 40px auto; }
+    .card {
+      background: #fff; border-radius: 10px; padding: 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.08);
+    }
+    h2 { margin-top: 0; }
+    label { display:block; margin: 12px 0 6px; }
+    input { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #cfd4dc; border-radius: 6px; }
+    .row { display: flex; gap: 8px; margin-top: 12px; }
+    button {
+      border: 0; border-radius: 6px; padding: 10px 12px; cursor: pointer;
+      background: #2563eb; color: white;
+    }
+    button.secondary { background: #4b5563; }
+    button.link-btn { background: transparent; color: #2563eb; padding: 0; }
+    .row button { flex: 1; }
+    .danger, .error { color: #dc2626; margin-top: 10px; min-height: 20px; }
+    .success { color: #16a34a; margin-top: 10px; min-height: 20px; }
+    .hidden { display: none !important; }
+    .panel {
+      position: fixed; inset: 0; background: rgba(0,0,0,.35);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .panel .card { width: 420px; max-width: calc(100vw - 24px); }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <strong>高校赞助平台（Mock）</strong>
+    <div>
+      <span id="currentUser">未登录</span>
+      <button id="logoutBtn" class="secondary hidden">退出登录</button>
+    </div>
+  </header>
+
+  <main id="authView" class="container">
+    <div class="card">
+      <h2>登录</h2>
+      <label for="loginAccount">邮箱 / 手机号</label>
+      <input id="loginAccount" placeholder="请输入邮箱或手机号" />
+
+      <label for="loginPassword">密码</label>
+      <input id="loginPassword" type="password" placeholder="请输入密码" />
+
+      <div class="row">
+        <button id="passwordLogin">密码登录</button>
+      </div>
+
+      <hr />
+
+      <label for="smsCode">验证码</label>
+      <input id="smsCode" placeholder="请输入验证码" />
+      <div class="row">
+        <button id="sendCode" class="secondary">发送验证码</button>
+        <button id="codeLogin">验证码登录</button>
+      </div>
+
+      <div class="row">
+        <button id="thirdPartyLogin" class="secondary">第三方登录</button>
+      </div>
+
+      <div class="row" style="justify-content: space-between;">
+        <button id="openRegister" class="link-btn" type="button">注册</button>
+        <button id="openForgot" class="link-btn" type="button">忘记密码</button>
+      </div>
+
+      <div id="loginError" class="error"></div>
+      <div id="loginMessage" class="success"></div>
+    </div>
+  </main>
+
+  <main id="appView" class="container hidden">
+    <div class="card">
+      <h2>主界面</h2>
+      <p>你已登录成功，欢迎使用系统。</p>
+      <p>当前角色：<strong id="currentRole">-</strong></p>
+    </div>
+  </main>
+
+  <section id="registerPanel" class="panel hidden">
+    <div class="card">
+      <h2>注册</h2>
+      <label for="regAccount">账号（邮箱/手机号）</label>
+      <input id="regAccount" placeholder="请输入账号" />
+      <label for="regPassword">密码</label>
+      <input id="regPassword" type="password" placeholder="请输入密码" />
+      <label for="regConfirm">确认密码</label>
+      <input id="regConfirm" type="password" placeholder="请再次输入密码" />
+      <div id="registerError" class="error"></div>
+      <div class="row">
+        <button id="registerSubmit">提交注册</button>
+        <button id="registerCancel" class="secondary">取消</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="forgotPanel" class="panel hidden">
+    <div class="card">
+      <h2>忘记密码</h2>
+      <label for="forgotAccount">账号（邮箱/手机号）</label>
+      <input id="forgotAccount" placeholder="请输入账号" />
+      <label for="forgotCode">验证码</label>
+      <input id="forgotCode" placeholder="请输入验证码" />
+      <label for="forgotNewPassword">新密码</label>
+      <input id="forgotNewPassword" type="password" placeholder="请输入新密码" />
+      <div id="forgotError" class="error"></div>
+      <div class="row">
+        <button id="forgotSubmit">重置密码</button>
+        <button id="forgotCancel" class="secondary">取消</button>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    // 统一会话状态 + mock 用户表
+    const authState = {
+      isLoggedIn: false,
+      currentUser: null,
+      role: null,
+      currentCode: null,
+      codeCountdown: 0,
+      codeTimer: null,
+      mockUsers: {
+        'admin@example.com': { username: '管理员', password: 'Admin123', role: 'admin' },
+        '13800000000': { username: '测试同学', password: 'Test123', role: 'student' }
+      }
+    };
+
+    const el = {
+      authView: document.getElementById('authView'),
+      appView: document.getElementById('appView'),
+      currentUser: document.getElementById('currentUser'),
+      currentRole: document.getElementById('currentRole'),
+      logoutBtn: document.getElementById('logoutBtn'),
+      loginAccount: document.getElementById('loginAccount'),
+      loginPassword: document.getElementById('loginPassword'),
+      passwordLogin: document.getElementById('passwordLogin'),
+      smsCode: document.getElementById('smsCode'),
+      sendCode: document.getElementById('sendCode'),
+      codeLogin: document.getElementById('codeLogin'),
+      thirdPartyLogin: document.getElementById('thirdPartyLogin'),
+      loginError: document.getElementById('loginError'),
+      loginMessage: document.getElementById('loginMessage'),
+      openRegister: document.getElementById('openRegister'),
+      openForgot: document.getElementById('openForgot'),
+      registerPanel: document.getElementById('registerPanel'),
+      regAccount: document.getElementById('regAccount'),
+      regPassword: document.getElementById('regPassword'),
+      regConfirm: document.getElementById('regConfirm'),
+      registerError: document.getElementById('registerError'),
+      registerSubmit: document.getElementById('registerSubmit'),
+      registerCancel: document.getElementById('registerCancel'),
+      forgotPanel: document.getElementById('forgotPanel'),
+      forgotAccount: document.getElementById('forgotAccount'),
+      forgotCode: document.getElementById('forgotCode'),
+      forgotNewPassword: document.getElementById('forgotNewPassword'),
+      forgotError: document.getElementById('forgotError'),
+      forgotSubmit: document.getElementById('forgotSubmit'),
+      forgotCancel: document.getElementById('forgotCancel')
+    };
+
+    const accountRegex = /^(1\d{10}|[^\s@]+@[^\s@]+\.[^\s@]+)$/;
+
+    function showError(message) {
+      el.loginError.textContent = message;
+      el.loginMessage.textContent = '';
+    }
+
+    function showMessage(message) {
+      el.loginMessage.textContent = message;
+      el.loginError.textContent = '';
+    }
+
+    function setLoggedIn(userKey, userData) {
+      authState.isLoggedIn = true;
+      authState.currentUser = { account: userKey, ...userData };
+      authState.role = userData.role;
+
+      el.currentUser.textContent = `当前用户：${userData.username}`;
+      el.currentRole.textContent = userData.role;
+      el.authView.classList.add('hidden');
+      el.appView.classList.remove('hidden');
+      el.logoutBtn.classList.remove('hidden');
+      showMessage('登录成功');
+    }
+
+    function clearSession() {
+      authState.isLoggedIn = false;
+      authState.currentUser = null;
+      authState.role = null;
+
+      el.currentUser.textContent = '未登录';
+      el.currentRole.textContent = '-';
+      el.authView.classList.remove('hidden');
+      el.appView.classList.add('hidden');
+      el.logoutBtn.classList.add('hidden');
+      showMessage('已退出登录');
+    }
+
+    function startCountdown() {
+      authState.codeCountdown = 60;
+      el.sendCode.disabled = true;
+      el.sendCode.textContent = `重新发送(${authState.codeCountdown}s)`;
+
+      authState.codeTimer = setInterval(() => {
+        authState.codeCountdown -= 1;
+        if (authState.codeCountdown <= 0) {
+          clearInterval(authState.codeTimer);
+          authState.codeTimer = null;
+          el.sendCode.disabled = false;
+          el.sendCode.textContent = '发送验证码';
+          return;
+        }
+        el.sendCode.textContent = `重新发送(${authState.codeCountdown}s)`;
+      }, 1000);
+    }
+
+    el.passwordLogin.addEventListener('click', () => {
+      const account = el.loginAccount.value.trim();
+      const password = el.loginPassword.value;
+      if (!accountRegex.test(account)) {
+        return showError('请输入正确的邮箱或手机号');
+      }
+      if (!password) {
+        return showError('密码不能为空');
+      }
+
+      const user = authState.mockUsers[account];
+      if (!user || user.password !== password) {
+        return showError('账号或密码错误');
+      }
+
+      setLoggedIn(account, user);
+    });
+
+    el.sendCode.addEventListener('click', () => {
+      const account = el.loginAccount.value.trim();
+      if (!accountRegex.test(account)) {
+        return showError('请先输入正确的账号再发送验证码');
+      }
+      authState.currentCode = '123456';
+      startCountdown();
+      showMessage('验证码已发送（Mock：123456）');
+    });
+
+    el.codeLogin.addEventListener('click', () => {
+      const account = el.loginAccount.value.trim();
+      const code = el.smsCode.value.trim();
+      if (!accountRegex.test(account)) {
+        return showError('请输入正确的邮箱或手机号');
+      }
+      const user = authState.mockUsers[account];
+      if (!user) {
+        return showError('账号不存在，请先注册');
+      }
+      if (!code) {
+        return showError('请输入验证码');
+      }
+      if (code !== authState.currentCode || code !== '123456') {
+        return showError('验证码错误');
+      }
+
+      setLoggedIn(account, user);
+    });
+
+    el.thirdPartyLogin.addEventListener('click', () => {
+      const provider = prompt('请输入第三方登录渠道（wechat/qq/github）', 'wechat');
+      if (!provider) {
+        return showError('已取消第三方登录');
+      }
+      const normalized = provider.trim().toLowerCase();
+      if (!['wechat', 'qq', 'github'].includes(normalized)) {
+        return showError('不支持的第三方渠道');
+      }
+
+      const account = `${normalized}_user`;
+      const user = {
+        username: `${normalized.toUpperCase()}用户`,
+        password: '',
+        role: 'guest'
+      };
+      authState.mockUsers[account] = user;
+      setLoggedIn(account, user);
+    });
+
+    el.openRegister.addEventListener('click', () => {
+      el.registerPanel.classList.remove('hidden');
+      el.registerError.textContent = '';
+    });
+
+    el.registerCancel.addEventListener('click', () => {
+      el.registerPanel.classList.add('hidden');
+    });
+
+    el.registerSubmit.addEventListener('click', () => {
+      const account = el.regAccount.value.trim();
+      const password = el.regPassword.value;
+      const confirm = el.regConfirm.value;
+
+      if (!accountRegex.test(account)) {
+        return (el.registerError.textContent = '账号格式不正确');
+      }
+      if (!password) {
+        return (el.registerError.textContent = '密码不能为空');
+      }
+      if (password !== confirm) {
+        return (el.registerError.textContent = '两次密码输入不一致');
+      }
+      if (authState.mockUsers[account]) {
+        return (el.registerError.textContent = '账号已存在');
+      }
+
+      authState.mockUsers[account] = {
+        username: account,
+        password,
+        role: 'student'
+      };
+      el.registerPanel.classList.add('hidden');
+      showMessage('注册成功，请使用新账号登录');
+    });
+
+    el.openForgot.addEventListener('click', () => {
+      el.forgotPanel.classList.remove('hidden');
+      el.forgotError.textContent = '';
+      authState.currentCode = '123456';
+      showMessage('忘记密码验证码（Mock：123456）');
+    });
+
+    el.forgotCancel.addEventListener('click', () => {
+      el.forgotPanel.classList.add('hidden');
+    });
+
+    el.forgotSubmit.addEventListener('click', () => {
+      const account = el.forgotAccount.value.trim();
+      const code = el.forgotCode.value.trim();
+      const newPassword = el.forgotNewPassword.value;
+      const user = authState.mockUsers[account];
+
+      if (!accountRegex.test(account)) {
+        return (el.forgotError.textContent = '账号格式不正确');
+      }
+      if (!user) {
+        return (el.forgotError.textContent = '账号不存在');
+      }
+      if (code !== '123456') {
+        return (el.forgotError.textContent = '验证码错误');
+      }
+      if (!newPassword) {
+        return (el.forgotError.textContent = '新密码不能为空');
+      }
+
+      authState.mockUsers[account].password = newPassword;
+      el.forgotPanel.classList.add('hidden');
+      showMessage('密码重置成功，请重新登录');
+    });
+
+    el.logoutBtn.addEventListener('click', clearSession);
+  </script>
+</body>
+</html>
