@@ -443,6 +443,8 @@
     };
 
     const STORAGE_KEY = 'usp-demo-state-v2';
+    const CLUB_DEMO_ACCOUNT = 'club@example.com';
+    const CLUB_DEMO_PASSWORD = 'Club123';
 
     // 统一会话状态 + mock 用户表
     const DEFAULT_AUTH_STATE = {
@@ -809,6 +811,34 @@
       helpState.submitMessage = '';
       adminState.editingNoticeId = null;
       showToast('演示数据已重置');
+    }
+
+    function ensureClubDemoAccountReady() {
+      const demoUser = authState.mockUsers[CLUB_DEMO_ACCOUNT];
+      if (!demoUser) {
+        authState.mockUsers[CLUB_DEMO_ACCOUNT] = {
+          username: '社团运营',
+          password: CLUB_DEMO_PASSWORD,
+          role: 'club'
+        };
+      } else {
+        demoUser.password = CLUB_DEMO_PASSWORD;
+        demoUser.role = 'club';
+        if (!demoUser.username) {
+          demoUser.username = '社团运营';
+        }
+      }
+
+      const adminUser = adminState.userStore.find((item) => item.account === CLUB_DEMO_ACCOUNT);
+      if (!adminUser) {
+        upsertUserToAdminStore(CLUB_DEMO_ACCOUNT, authState.mockUsers[CLUB_DEMO_ACCOUNT]);
+      } else {
+        adminUser.enabled = true;
+        adminUser.role = 'club';
+        adminUser.name = authState.mockUsers[CLUB_DEMO_ACCOUNT].username;
+      }
+
+      setState({ auth: authState, users: adminState.userStore });
     }
 
     const accountRegex = /^(1\d{10}|[^\s@]+@[^\s@]+\.[^\s@]+)$/;
@@ -2104,6 +2134,7 @@
 
     populateProjectStatusOptions();
     hydrateState();
+    ensureClubDemoAccountReady();
     render();
   </script>
 </body>
