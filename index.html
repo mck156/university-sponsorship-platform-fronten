@@ -1694,6 +1694,24 @@
       showMessage('登录成功');
     }
 
+    function upsertUserToAdminStore(account, userData) {
+      const existingUser = adminState.userStore.find((item) => item.account === account);
+      if (existingUser) {
+        existingUser.name = userData.username || account;
+        existingUser.role = roleConfig[userData.role] ? userData.role : 'student';
+        return;
+      }
+
+      const nextId = adminState.userStore.length ? Math.max(...adminState.userStore.map((item) => item.id)) + 1 : 1;
+      adminState.userStore.push({
+        id: nextId,
+        account,
+        name: userData.username || account,
+        role: roleConfig[userData.role] ? userData.role : 'student',
+        enabled: true
+      });
+    }
+
     function clearSession() {
       authState.isLoggedIn = false;
       authState.currentUser = null;
@@ -1821,7 +1839,9 @@
         password,
         role: 'student'
       };
-      setState({ auth: authState });
+      upsertUserToAdminStore(account, authState.mockUsers[account]);
+      pushAdminLog(`新增用户：${account}`);
+      setState({ auth: authState, users: adminState.userStore, logs: adminState.logStore });
       el.registerPanel.classList.add('hidden');
       showMessage('注册成功，请使用新账号登录');
     });
