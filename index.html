@@ -511,8 +511,8 @@
       browseFilters: { keyword: '', category: 'all', budget: 'all' },
       browseSelectedProjectId: null,
       applicationStore: [
-        { id: 1, projectId: 1, projectName: '校园音乐节', amount: 30000, status: 'applying', time: '2026-03-01 10:00', remark: '提供舞台搭建支持' },
-        { id: 2, projectId: 2, projectName: '创新创业大赛', amount: 80000, status: 'signed', time: '2026-03-02 15:20', remark: '现金赞助，分两期支付' }
+        { id: 1, projectId: 1, projectName: '校园音乐节', amount: 30000, status: 'applying', time: '2026-03-01 10:00', remark: '提供舞台搭建支持', applicantRole: 'sponsor', applicantAccount: 'sponsor@example.com', applicantName: '品牌赞助商' },
+        { id: 2, projectId: 2, projectName: '创新创业大赛', amount: 80000, status: 'signed', time: '2026-03-02 15:20', remark: '现金赞助，分两期支付', applicantRole: 'student', applicantAccount: '13800000000', applicantName: '测试同学' }
       ],
       selectedApplicationId: null,
       editingApplicationId: null
@@ -1026,6 +1026,42 @@
       });
     }
 
+    function canAccessApplication(app, role = authState.role, user = authState.currentUser) {
+      if (!app || !role) return false;
+      if (role === 'admin' || role === 'club') return true;
+      const ownerRole = app.applicantRole || 'sponsor';
+      const ownerAccount = app.applicantAccount || '';
+      const currentAccount = user?.account || '';
+      if (!ownerAccount) return ownerRole === role;
+      return ownerRole === role && ownerAccount === currentAccount;
+    }
+
+    function canSubmitApplication(role = authState.role) {
+      return role === 'student' || role === 'sponsor';
+    }
+
+    function isApplicationMutable(app) {
+      return app?.status === 'applying' || app?.status === 'withdrawn';
+    }
+
+    function canEditOrWithdrawApplication(app, role = authState.role, user = authState.currentUser) {
+      return canAccessApplication(app, role, user) && canSubmitApplication(role) && isApplicationMutable(app);
+    }
+
+    function canAdvanceApplicationStatus(app, role = authState.role) {
+      const flow = { applying: 'signed', signed: 'executing', executing: 'completed' };
+      return (role === 'admin' || role === 'club') && !!flow[app?.status];
+    }
+
+    function canDownloadContract(app, role = authState.role, user = authState.currentUser) {
+      if (!canAccessApplication(app, role, user)) return false;
+      return ['signed', 'executing', 'completed'].includes(app.status);
+    }
+
+    function getVisibleApplications() {
+      return projectState.applicationStore.filter((app) => canAccessApplication(app));
+    }
+
 
     function loadMessagesForRole(role) {
       const seed = roleMessageSeed[role] || roleMessageSeed.student;
@@ -1306,7 +1342,7 @@
         <label for="applyRemark">申请备注</label>
         <textarea id="applyRemark" placeholder="可填写补充说明"></textarea>
         <div class="row">
-          <button data-action="submit-application" data-id="${project.id}" data-roles="student,sponsor,admin">提交申请</button>
+          <button data-action="submit-application" data-id="${project.id}" data-roles="student,sponsor">提交申请</button>
         </div>
       `;
       applyRoleActionVisibility(el.browseDetail, authState.role || 'student');
@@ -1343,7 +1379,8 @@
       if (!app) {
         return '请选择申请后预览合同条款。';
       }
-      return `《高校项目赞助合同（预览）》\n\n甲方：高校赞助平台\n乙方：赞助商（当前登录用户）\n项目名称：${app.projectName}\n赞助金额：¥${Number(app.amount).toLocaleString()}\n当前状态：${PROJECT_STATUS[app.status]?.label || app.status}\n申请时间：${app.time}\n\n条款：\n1. 乙方应按约定支付赞助金额。\n2. 甲方负责项目执行与成果反馈。\n3. 双方确认后合同生效。\n4. 备注：${app.remark || '无'}\n`;
+      const partyB = app.applicantName || app.applicantAccount || '申请方';
+      return `《高校项目赞助合同（预览）》\n\n甲方：高校赞助平台\n乙方：${partyB}\n项目名称：${app.projectName}\n赞助金额：¥${Number(app.amount).toLocaleString()}\n当前状态：${PROJECT_STATUS[app.status]?.label || app.status}\n申请时间：${app.time}\n\n条款：\n1. 乙方应按约定支付赞助金额。\n2. 甲方负责项目执行与成果反馈。\n3. 双方确认后合同生效。\n4. 备注：${app.remark || '无'}\n`;
     }
 
     function renderContractPreview() {
@@ -1352,31 +1389,41 @@
     }
 
     function renderApplicationManage() {
-      el.applicationList.innerHTML = projectState.applicationStore.length
-        ? projectState.applicationStore.map((app) => {
+      const visibleApplications = getVisibleApplications();
+      if (projectState.selectedApplicationId && !visibleApplications.some((item) => item.id === projectState.selectedApplicationId)) {
+        projectState.selectedApplicationId = null;
+      }
+
+      el.applicationList.innerHTML = visibleApplications.length
+        ? visibleApplications.map((app) => {
           const nextStatusFlow = { applying: 'signed', signed: 'executing', executing: 'completed' };
           const nextStatus = nextStatusFlow[app.status];
           const withdrawText = app.status === 'withdrawn' ? '恢复申请' : '撤回申请';
+          const canMutate = canEditOrWithdrawApplication(app);
+          const canAdvance = canAdvanceApplicationStatus(app);
           return `
             <div class="application-item ${projectState.selectedApplicationId === app.id ? 'active' : ''}">
               <div class="project-head">
                 <strong>${app.projectName}</strong>
                 ${getStatusTag(app.status)}
               </div>
-              <div class="muted">金额：¥${Number(app.amount).toLocaleString()} ｜ 时间：${app.time}</div>
+              <div class="muted">申请方：${escapeHtml(app.applicantName || app.applicantAccount || '-')} ｜ 金额：¥${Number(app.amount).toLocaleString()} ｜ 时间：${app.time}</div>
               <div>备注：${app.remark || '-'}</div>
               <div class="project-actions">
                 <button data-action="select-application" data-id="${app.id}">查看合同</button>
-                <button class="secondary" data-action="edit-application" data-id="${app.id}" data-roles="student,sponsor,admin">修改申请</button>
-                <button class="warning" data-action="withdraw-application" data-id="${app.id}" data-roles="student,sponsor,admin">${withdrawText}</button>
-                ${nextStatus ? `<button data-action="advance-status" data-id="${app.id}" data-roles="admin,club">流转到${PROJECT_STATUS[nextStatus].label}</button>` : ''}
+                ${canMutate ? `<button class="secondary" data-action="edit-application" data-id="${app.id}" data-roles="student,sponsor">修改申请</button>` : ''}
+                ${canMutate ? `<button class="warning" data-action="withdraw-application" data-id="${app.id}" data-roles="student,sponsor">${withdrawText}</button>` : ''}
+                ${nextStatus && canAdvance ? `<button data-action="advance-status" data-id="${app.id}" data-roles="admin,club">流转到${PROJECT_STATUS[nextStatus].label}</button>` : ''}
               </div>
             </div>
           `;
         }).join('')
-        : '<p class="muted">暂无申请记录。</p>';
+        : '<p class="muted">当前角色暂无可查看申请记录。</p>';
       renderContractPreview();
       applyRoleActionVisibility(document.getElementById('tpl-apply-manage'), authState.role || 'student');
+
+      const selectedApp = projectState.applicationStore.find((item) => item.id === projectState.selectedApplicationId);
+      el.downloadContract.disabled = !canDownloadContract(selectedApp);
     }
 
     function openProjectPanel(mode, project) {
@@ -1542,6 +1589,9 @@
         return renderProjectBrowseDetail(id);
       }
       if (button.dataset.action === 'submit-application') {
+        if (!canSubmitApplication()) {
+          return showToast('当前角色无提交申请权限', 'error');
+        }
         const amountInput = document.getElementById('applyAmount');
         const remarkInput = document.getElementById('applyRemark');
         const amount = Number(amountInput?.value);
@@ -1560,7 +1610,10 @@
           amount,
           status: 'applying',
           time: getCurrentTimeText(),
-          remark: remarkInput?.value.trim() || ''
+          remark: remarkInput?.value.trim() || '',
+          applicantRole: authState.role,
+          applicantAccount: authState.currentUser?.account || '',
+          applicantName: authState.currentUser?.username || authState.currentUser?.account || roleConfig[authState.role]?.label || '申请方'
         });
         projectState.selectedApplicationId = nextId;
         setState({ applications: projectState.applicationStore });
@@ -1575,21 +1628,33 @@
       }
 
       if (button.dataset.action === 'select-application') {
+        if (!canAccessApplication(app)) {
+          return showToast('当前角色无权查看该申请', 'error');
+        }
         projectState.selectedApplicationId = id;
         setState({ ui: uiState });
         return;
       }
       if (button.dataset.action === 'edit-application') {
+        if (!canEditOrWithdrawApplication(app)) {
+          return showToast('当前状态或角色不允许修改申请', 'error');
+        }
         openEditApplicationPanel(app);
         return;
       }
       if (button.dataset.action === 'withdraw-application') {
+        if (!canEditOrWithdrawApplication(app)) {
+          return showToast('当前状态或角色不允许撤回申请', 'error');
+        }
         app.status = app.status === 'withdrawn' ? 'applying' : 'withdrawn';
         setState({ applications: projectState.applicationStore });
         pushAdminLog(`${app.status === 'withdrawn' ? '撤回' : '恢复'}申请：${app.projectName}`);
         return showToast(app.status === 'withdrawn' ? '申请已撤回' : '申请已恢复');
       }
       if (button.dataset.action === 'advance-status') {
+        if (!canAdvanceApplicationStatus(app)) {
+          return showToast('仅社团或管理员可流转当前状态', 'error');
+        }
         const nextStatusFlow = { applying: 'signed', signed: 'executing', executing: 'completed' };
         if (nextStatusFlow[app.status]) {
           app.status = nextStatusFlow[app.status];
@@ -1669,8 +1734,11 @@
 
     function downloadContractFile() {
       const app = projectState.applicationStore.find((item) => item.id === projectState.selectedApplicationId);
-      if (!app) {
+      if (!app || !canAccessApplication(app)) {
         return showToast('请先选择申请再下载合同', 'error');
+      }
+      if (!canDownloadContract(app)) {
+        return showToast('仅已签约/执行中/已完成申请可下载合同', 'error');
       }
       const contractHtml = `<html><body><pre>${generateContractText(app)}</pre></body></html>`;
       const blob = new Blob([contractHtml], { type: 'text/html;charset=utf-8' });
