@@ -811,6 +811,32 @@
       showToast('演示数据已重置');
     }
 
+    function ensureDefaultMockAccountsReady() {
+      Object.entries(DEFAULT_AUTH_STATE.mockUsers).forEach(([account, defaultUser]) => {
+        const currentUser = authState.mockUsers[account];
+        if (!currentUser) {
+          authState.mockUsers[account] = clone(defaultUser);
+          return;
+        }
+        currentUser.username = defaultUser.username;
+        currentUser.password = defaultUser.password;
+        currentUser.role = defaultUser.role;
+      });
+
+      DEFAULT_ADMIN_STATE.userStore.forEach((defaultAdminUser) => {
+        const existingUser = adminState.userStore.find((item) => item.account === defaultAdminUser.account);
+        if (!existingUser) {
+          adminState.userStore.push(clone(defaultAdminUser));
+          return;
+        }
+        existingUser.name = defaultAdminUser.name;
+        existingUser.role = defaultAdminUser.role;
+        existingUser.enabled = defaultAdminUser.enabled;
+      });
+
+      setState({ auth: authState, users: adminState.userStore });
+    }
+
     const accountRegex = /^(1\d{10}|[^\s@]+@[^\s@]+\.[^\s@]+)$/;
 
     function showError(message) {
@@ -1913,6 +1939,10 @@
       if (user.role !== selectedRole) {
         return showError('登录角色与账号身份不匹配');
       }
+      const adminUser = adminState.userStore.find((item) => item.account === account);
+      if (adminUser && adminUser.enabled === false) {
+        return showError('账号已被禁用，请联系管理员');
+      }
 
       setLoggedIn(account, user);
     });
@@ -1946,6 +1976,10 @@
       }
       if (user.role !== selectedRole) {
         return showError('登录角色与账号身份不匹配');
+      }
+      const adminUser = adminState.userStore.find((item) => item.account === account);
+      if (adminUser && adminUser.enabled === false) {
+        return showError('账号已被禁用，请联系管理员');
       }
 
       setLoggedIn(account, user);
@@ -2104,6 +2138,7 @@
 
     populateProjectStatusOptions();
     hydrateState();
+    ensureDefaultMockAccountsReady();
     render();
   </script>
 </body>
