@@ -742,11 +742,18 @@
       if (!raw) return;
       try {
         const data = JSON.parse(raw);
+        const hydratedAuth = data.auth || clone(DEFAULT_AUTH_STATE);
+        const hydratedRole = data.role || null;
+        const migratedApplications = migrateApplications(
+          Array.isArray(data.applications) ? data.applications : clone(DEFAULT_PROJECT_STATE.applicationStore),
+          hydratedAuth.currentUser,
+          hydratedRole
+        );
         setState({
-          auth: data.auth || clone(DEFAULT_AUTH_STATE),
-          role: data.role || null,
+          auth: hydratedAuth,
+          role: hydratedRole,
           projects: Array.isArray(data.projects) ? data.projects : clone(DEFAULT_PROJECT_STATE.projectStore),
-          applications: Array.isArray(data.applications) ? data.applications : clone(DEFAULT_PROJECT_STATE.applicationStore),
+          applications: migratedApplications,
           messages: data.messages || clone(DEFAULT_MESSAGE_STATE),
           feedbacks: Array.isArray(data.feedbacks) ? data.feedbacks : [],
           users: Array.isArray(data.users) ? data.users : clone(DEFAULT_ADMIN_STATE.userStore),
@@ -1026,13 +1033,43 @@
       });
     }
 
+    function pickFirstNonEmpty(...values) {
+      for (const value of values) {
+        if (typeof value === 'string' && value.trim()) {
+          return value.trim();
+        }
+      }
+      return '';
+    }
+
+    function normalizeApplicationOwnership(app, fallbackUser = null, fallbackRole = '') {
+      const normalizedRole = pickFirstNonEmpty(app.applicantRole, app.ownerRole, app.creatorRole, app.role);
+      const normalizedAccount = pickFirstNonEmpty(app.applicantAccount, app.ownerAccount, app.creatorAccount, app.account, app.userAccount);
+      const normalizedName = pickFirstNonEmpty(app.applicantName, app.ownerName, app.creatorName, app.userName, app.name);
+      const submitterRole = normalizedRole || (canSubmitApplication(fallbackRole) ? fallbackRole : '');
+      const fallbackAccount = canSubmitApplication(submitterRole) ? (fallbackUser?.account || '') : '';
+      const fallbackName = fallbackUser?.username || fallbackUser?.account || '';
+
+      return {
+        ...app,
+        applicantRole: submitterRole || 'legacy',
+        applicantAccount: normalizedAccount || fallbackAccount,
+        applicantName: normalizedName || fallbackName
+      };
+    }
+
+    function migrateApplications(applications, fallbackUser = null, fallbackRole = '') {
+      if (!Array.isArray(applications)) return [];
+      return applications.map((app) => normalizeApplicationOwnership(app, fallbackUser, fallbackRole));
+    }
+
     function canAccessApplication(app, role = authState.role, user = authState.currentUser) {
       if (!app || !role) return false;
       if (role === 'admin' || role === 'club') return true;
-      const ownerRole = app.applicantRole || 'sponsor';
+      const ownerRole = app.applicantRole || '';
       const ownerAccount = app.applicantAccount || '';
       const currentAccount = user?.account || '';
-      if (!ownerAccount) return ownerRole === role;
+      if (!ownerRole || ownerRole === 'legacy' || !ownerAccount) return false;
       return ownerRole === role && ownerAccount === currentAccount;
     }
 
