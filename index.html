@@ -48,6 +48,9 @@
       z-index: 10;
     }
     .panel .card { width: 460px; max-width: calc(100vw - 24px); }
+    .application-edit-panel .card { width: 520px; }
+    .panel-subtitle { margin: -4px 0 8px; color: #64748b; font-size: 13px; }
+    .panel-actions { margin-top: 14px; }
 
     .dashboard-stats {
       display: grid;
@@ -394,6 +397,22 @@
     </div>
   </section>
 
+  <section id="editApplicationPanel" class="panel application-edit-panel hidden">
+    <div class="card">
+      <h2>修改申请</h2>
+      <p class="panel-subtitle" id="editApplicationProjectName">-</p>
+      <label for="editApplicationAmount">赞助金额（元）</label>
+      <input id="editApplicationAmount" type="number" min="1" placeholder="请输入赞助金额" />
+      <label for="editApplicationRemark">备注</label>
+      <textarea id="editApplicationRemark" placeholder="请输入备注信息（可选）"></textarea>
+      <div id="editApplicationError" class="error"></div>
+      <div class="row panel-actions">
+        <button id="editApplicationSubmit">保存修改</button>
+        <button id="editApplicationCancel" class="secondary">取消</button>
+      </div>
+    </div>
+  </section>
+
   <div id="toastWrap" class="toast-wrap"></div>
 
   <script>
@@ -495,7 +514,8 @@
         { id: 1, projectId: 1, projectName: '校园音乐节', amount: 30000, status: 'applying', time: '2026-03-01 10:00', remark: '提供舞台搭建支持' },
         { id: 2, projectId: 2, projectName: '创新创业大赛', amount: 80000, status: 'signed', time: '2026-03-02 15:20', remark: '现金赞助，分两期支付' }
       ],
-      selectedApplicationId: null
+      selectedApplicationId: null,
+      editingApplicationId: null
     };
 
 
@@ -599,6 +619,13 @@
       browseProjectList: document.getElementById('browseProjectList'),
       browseDetail: document.getElementById('browseDetail'),
       applicationList: document.getElementById('applicationList'),
+      editApplicationPanel: document.getElementById('editApplicationPanel'),
+      editApplicationProjectName: document.getElementById('editApplicationProjectName'),
+      editApplicationAmount: document.getElementById('editApplicationAmount'),
+      editApplicationRemark: document.getElementById('editApplicationRemark'),
+      editApplicationError: document.getElementById('editApplicationError'),
+      editApplicationSubmit: document.getElementById('editApplicationSubmit'),
+      editApplicationCancel: document.getElementById('editApplicationCancel'),
       contractPreview: document.getElementById('contractPreview'),
       downloadContract: document.getElementById('downloadContract'),
       helpCenterContent: document.getElementById('helpCenterContent'),
@@ -1380,6 +1407,44 @@
       el.projectPanel.classList.add('hidden');
     }
 
+
+    function openEditApplicationPanel(app) {
+      projectState.editingApplicationId = app.id;
+      el.editApplicationProjectName.textContent = `项目：${app.projectName}`;
+      el.editApplicationAmount.value = String(app.amount);
+      el.editApplicationRemark.value = app.remark || '';
+      el.editApplicationError.textContent = '';
+      el.editApplicationPanel.classList.remove('hidden');
+      el.editApplicationAmount.focus();
+      el.editApplicationAmount.select();
+    }
+
+    function closeEditApplicationPanel() {
+      projectState.editingApplicationId = null;
+      el.editApplicationPanel.classList.add('hidden');
+      el.editApplicationError.textContent = '';
+    }
+
+    function saveEditedApplication() {
+      const app = projectState.applicationStore.find((item) => item.id === projectState.editingApplicationId);
+      if (!app) {
+        closeEditApplicationPanel();
+        return showToast('申请不存在', 'error');
+      }
+      const nextAmount = Number(el.editApplicationAmount.value);
+      if (!Number.isFinite(nextAmount) || nextAmount <= 0) {
+        el.editApplicationError.textContent = '请输入有效的赞助金额';
+        return;
+      }
+      app.amount = nextAmount;
+      app.remark = el.editApplicationRemark.value.trim();
+      app.time = getCurrentTimeText();
+      setState({ applications: projectState.applicationStore });
+      pushAdminLog(`修改申请：${app.projectName}`);
+      closeEditApplicationPanel();
+      showToast('申请已更新');
+    }
+
     function saveProject() {
       const name = el.projectName.value.trim();
       const sponsor = el.projectSponsor.value.trim();
@@ -1515,17 +1580,8 @@
         return;
       }
       if (button.dataset.action === 'edit-application') {
-        const nextAmount = Number(prompt('请输入新的赞助金额', String(app.amount)));
-        if (!Number.isFinite(nextAmount) || nextAmount <= 0) {
-          return showToast('修改失败：金额无效', 'error');
-        }
-        const nextRemark = prompt('请输入新的备注', app.remark || '') || '';
-        app.amount = nextAmount;
-        app.remark = nextRemark.trim();
-        app.time = getCurrentTimeText();
-        setState({ applications: projectState.applicationStore });
-        pushAdminLog(`修改申请：${app.projectName}`);
-        return showToast('申请已更新');
+        openEditApplicationPanel(app);
+        return;
       }
       if (button.dataset.action === 'withdraw-application') {
         app.status = app.status === 'withdrawn' ? 'applying' : 'withdrawn';
@@ -1813,6 +1869,19 @@
     el.openCreateProject.addEventListener('click', () => openProjectPanel('create'));
     el.projectCancel.addEventListener('click', closeProjectPanel);
     el.projectSubmit.addEventListener('click', saveProject);
+    el.editApplicationCancel.addEventListener('click', closeEditApplicationPanel);
+    el.editApplicationSubmit.addEventListener('click', saveEditedApplication);
+    el.editApplicationPanel.addEventListener('click', (event) => {
+      if (event.target === el.editApplicationPanel) {
+        closeEditApplicationPanel();
+      }
+    });
+    el.editApplicationAmount.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        saveEditedApplication();
+      }
+    });
     el.projectList.addEventListener('click', handleProjectListClick);
     el.browseSearch.addEventListener('input', (event) => {
       projectState.browseFilters.keyword = event.target.value.trim();
